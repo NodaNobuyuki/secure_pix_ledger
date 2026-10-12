@@ -15,6 +15,14 @@
 	<description>Secure instant-transfer banking API (synthetic data only)</description>
 	<properties>
 		<java.version>21</java.version>
+
+		<!-- Quality and security tooling (pinned so builds are reproducible) -->
+		<spotless.version>3.10.4</spotless.version>
+		<!-- 1.37.x breaks Spotless 3.10.4 (reflection API mismatch); stay on the version Spotless is tested with. -->
+		<google-java-format.version>1.36.1</google-java-format.version>
+		<spotbugs-maven-plugin.version>4.10.5.0</spotbugs-maven-plugin.version>
+		<findsecbugs.version>1.14.0</findsecbugs.version>
+		<dependency-check.version>13.0.0</dependency-check.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -99,6 +107,84 @@
 			<plugin>
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
+			</plugin>
+
+			<!-- Formatting is enforced, not suggested: `verify` fails on unformatted code.
+			     Run `./mvnw spotless:apply` to fix. -->
+			<plugin>
+				<groupId>com.diffplug.spotless</groupId>
+				<artifactId>spotless-maven-plugin</artifactId>
+				<version>${spotless.version}</version>
+				<configuration>
+					<java>
+						<googleJavaFormat>
+							<version>${google-java-format.version}</version>
+						</googleJavaFormat>
+						<removeUnusedImports/>
+					</java>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<phase>verify</phase>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Static analysis of the compiled bytecode. FindSecBugs adds security-specific
+			     detectors (injection, weak crypto, predictable randomness, etc.).
+			     Any suppression must go in spotbugs-exclude.xml with a written reason. -->
+			<plugin>
+				<groupId>com.github.spotbugs</groupId>
+				<artifactId>spotbugs-maven-plugin</artifactId>
+				<version>${spotbugs-maven-plugin.version}</version>
+				<configuration>
+					<effort>Max</effort>
+					<threshold>Medium</threshold>
+					<excludeFilterFile>spotbugs-exclude.xml</excludeFilterFile>
+					<plugins>
+						<plugin>
+							<groupId>com.h3xstream.findsecbugs</groupId>
+							<artifactId>findsecbugs-plugin</artifactId>
+							<version>${findsecbugs.version}</version>
+						</plugin>
+					</plugins>
+				</configuration>
+				<executions>
+					<execution>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<phase>verify</phase>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- Known-vulnerability scan of dependencies against the NVD.
+			     Not bound to a phase: the first run downloads the whole NVD database,
+			     so it runs on demand (`./mvnw dependency-check:check`) and in CI. -->
+			<plugin>
+				<groupId>org.owasp</groupId>
+				<artifactId>dependency-check-maven</artifactId>
+				<version>${dependency-check.version}</version>
+				<configuration>
+					<failBuildOnCVSS>7</failBuildOnCVSS>
+					<!-- Without an API key, NVD rate limits make updates take hours. -->
+					<nvdApiKeyEnvironmentVariable>NVD_API_KEY</nvdApiKeyEnvironmentVariable>
+					<suppressionFiles>
+						<suppressionFile>dependency-check-suppressions.xml</suppressionFile>
+					</suppressionFiles>
+					<formats>
+						<format>HTML</format>
+						<format>JSON</format>
+					</formats>
+					<!-- OSS Index now requires Sonatype credentials; NVD is our source of truth. -->
+					<ossIndexAnalyzerEnabled>false</ossIndexAnalyzerEnabled>
+					<!-- .NET analyzer is irrelevant for a JVM project and needs the dotnet runtime. -->
+					<assemblyAnalyzerEnabled>false</assemblyAnalyzerEnabled>
+				</configuration>
 			</plugin>
 		</plugins>
 	</build>

@@ -6,8 +6,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class SecurePixLedgerApplication {
 
-	public static void main(String[] args) {
-		SpringApplication.run(SecurePixLedgerApplication.class, args);
-	}
-
+  public static void main(String[] args) {
+    SpringApplication.run(SecurePixLedgerApplication.class, args);
+  }
 }

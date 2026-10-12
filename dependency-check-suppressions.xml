@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OWASP Dependency-Check suppressions. Each entry needs a <notes> element stating the CVE,
+  why it does not apply (or the accepted risk), and an `until` date so it is re-reviewed.
+-->
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+</suppressions>
