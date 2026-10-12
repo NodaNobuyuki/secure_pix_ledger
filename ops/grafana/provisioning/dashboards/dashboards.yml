@@ -1,0 +1,11 @@
+apiVersion: 1
+
+# Dashboards are loaded from JSON files in ops/grafana/dashboards (added in Phase 4).
+providers:
+  - name: secure-pix-ledger
+    folder: Secure Pix Ledger
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
