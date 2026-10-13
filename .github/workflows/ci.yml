@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  schedule:
+    # Weekly run: new CVEs get published against dependencies even when our code doesn't change.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+# Least privilege by default; jobs ask for more only if they need it.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Third-party actions are pinned to a full commit SHA (tag in the comment) because tags are
+# mutable: a compromised tag would otherwise run attacker code in our pipeline.
+
+jobs:
+  build:
+    name: Build, tests and static analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # `verify` runs unit + Testcontainers integration tests, Spotless check and SpotBugs/FindSecBugs.
+      # The runner ships with Docker, which Testcontainers uses for PostgreSQL.
+      - name: Verify
+        run: ./mvnw -B -ntp verify
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-reports
+          path: target/surefire-reports/
+          retention-days: 7
+
+  dependency-check:
+    name: OWASP Dependency-Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NVD_DATA_DIR: ${{ github.workspace }}/../nvd-data
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # Without a key, NVD rate limits make the download take hours; fail fast with a clear message.
+      - name: Require NVD API key
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::The NVD_API_KEY repository secret is not set."
+            exit 1
+          fi
+
+      # The NVD database is large; keep it in its own cache (not ~/.m2) and update it incrementally.
+      # A unique key per run always saves the refreshed DB; restore-keys picks up the latest one.
+      - name: Restore NVD database
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.NVD_DATA_DIR }}
+          key: nvd-${{ github.run_id }}
+          restore-keys: nvd-
+
+      - name: Scan dependencies (fails on CVSS >= 7)
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: ./mvnw -B -ntp dependency-check:check -DdataDirectory="$NVD_DATA_DIR"
+
+      - name: Upload Dependency-Check report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dependency-check-report
+          path: |
+            target/dependency-check-report.html
+            target/dependency-check-report.json
+          if-no-files-found: ignore
+          retention-days: 14
