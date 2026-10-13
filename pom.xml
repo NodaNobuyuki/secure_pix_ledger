@@ -15,6 +15,10 @@
 	<description>Secure instant-transfer banking API (synthetic data only)</description>
 	<properties>
 		<java.version>21</java.version>
+		<!-- Security override: Boot 4.1.1 ships Tomcat 11.0.24, affected by CVE-2026-65637,
+		     CVE-2026-65905, CVE-2026-65182, CVE-2026-68525 (CVSS 9.1-9.8) and others fixed in 11.0.25.
+		     Remove once a Boot release manages a fixed Tomcat version. -->
+		<tomcat.version>11.0.26</tomcat.version>
 
 		<!-- Quality and security tooling (pinned so builds are reproducible) -->
 		<spotless.version>3.10.4</spotless.version>
