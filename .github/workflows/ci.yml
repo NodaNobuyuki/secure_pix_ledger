@@ -52,8 +52,6 @@ jobs:
     name: OWASP Dependency-Check
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      NVD_DATA_DIR: ${{ github.workspace }}/../nvd-data
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -80,7 +78,8 @@ jobs:
       - name: Restore NVD database
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ env.NVD_DATA_DIR }}
+          # actions/cache rejects paths containing '..', and only warns instead of failing.
+          path: ${{ runner.temp }}/nvd-data
           key: nvd-${{ github.run_id }}
           restore-keys: nvd-
 
@@ -88,7 +87,7 @@ jobs:
         id: scan
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: ./mvnw -B -ntp dependency-check:check -DdataDirectory="$NVD_DATA_DIR"
+        run: ./mvnw -B -ntp dependency-check:check -DdataDirectory="$RUNNER_TEMP/nvd-data"
 
       # Save explicitly: the combined cache action skips saving when the job fails, and this job
       # fails exactly when a CVE is found, which would force a full NVD re-download every time.
@@ -96,7 +95,7 @@ jobs:
         if: always() && steps.scan.outcome != 'skipped'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: ${{ env.NVD_DATA_DIR }}
+          path: ${{ runner.temp }}/nvd-data
           key: nvd-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Upload Dependency-Check report
