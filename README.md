@@ -98,5 +98,6 @@ Each phase has a Definition of Done and starts only after the previous one passe
 | [0006](docs/adr/0006-double-entry-ledger-and-money.md) | Double-entry ledger, materialized balances, money as minor units |
 | [0007](docs/adr/0007-pessimistic-locking.md) | Pessimistic row locks in deterministic order |
 | [0008](docs/adr/0008-idempotency-keys.md) | Idempotency keys for transfer creation |
+| [0009](docs/adr/0009-schema-conventions.md) | Schema conventions: checked text enums, named constraints, fixed system ids |
 
 New decisions start from the [template](docs/adr/0000-template.md).
