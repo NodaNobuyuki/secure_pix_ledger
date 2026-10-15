@@ -20,6 +20,10 @@ B, while T2 locks B then waits for A.
   `SELECT … FROM accounts WHERE id IN (:a, :b) ORDER BY id FOR UPDATE`
   (JPA `PESSIMISTIC_WRITE`). PostgreSQL acquires row locks as the sorted rows are returned, so
   every transaction locks in ascending `id` order, and the A→B versus B→A deadlock cannot form.
+  *Note (2026-10-15):* on PostgreSQL, Hibernate 7 renders `PESSIMISTIC_WRITE` as
+  `FOR NO KEY UPDATE`. It still conflicts with itself, so transfers on one account serialize as
+  intended, but it does not block the `FOR KEY SHARE` locks taken by foreign key checks, so
+  inserting entries or transfers that reference a locked account does not wait. We keep it.
 - Balance checks, entry inserts and balance updates happen only after both locks are held, on the
   freshly locked rows.
 - Configure a **lock timeout** (PostgreSQL `lock_timeout`, a few seconds) so a stuck lock fails fast
