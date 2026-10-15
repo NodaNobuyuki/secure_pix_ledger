@@ -33,12 +33,19 @@ class SchemaConstraintsTests {
   void seedsSystemFundingAccountAtZero() {
     Map<String, Object> row =
         jdbc.queryForMap("SELECT * FROM accounts WHERE id = ?", SystemAccounts.FUNDING_ID);
+    // Other test classes share this database and may have committed deposits already, so "seeded
+    // at zero" is checked as: the balance is exactly what its entries explain.
+    Long entries =
+        jdbc.queryForObject(
+            "SELECT COALESCE(SUM(amount_minor), 0) FROM ledger_entries WHERE account_id = ?",
+            Long.class,
+            SystemAccounts.FUNDING_ID);
 
     assertThat(row)
         .containsEntry("type", "SYSTEM")
         .containsEntry("status", "ACTIVE")
         .containsEntry("currency", "BRL")
-        .containsEntry("balance_minor", 0L);
+        .containsEntry("balance_minor", entries);
   }
 
   @Test

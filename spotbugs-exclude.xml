@@ -7,4 +7,16 @@
     xmlns="https://github.com/spotbugs/filter/3.0.0"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="https://github.com/spotbugs/filter/3.0.0 https://raw.githubusercontent.com/spotbugs/spotbugs/master/spotbugs/etc/findbugsfilter.xsd">
+  <!--
+    Use cases keep the repository ports they are constructed with: that is dependency injection,
+    not leaked internal state. SpotBugs treats any interface as possibly mutable. Matched by field
+    type so that other EI_EXPOSE_REP2 findings in the same classes still fail the build.
+  -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Or>
+      <Field type="dev.carlosnobuyuki.bank.application.port.AccountRepository"/>
+      <Field type="dev.carlosnobuyuki.bank.application.port.TransferRepository"/>
+    </Or>
+  </Match>
 </FindBugsFilter>
