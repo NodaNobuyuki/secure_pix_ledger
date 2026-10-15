@@ -44,6 +44,7 @@ docker compose up --build
 | Service | URL |
 |---|---|
 | API | http://localhost:8080 |
+| API docs (Swagger UI) | http://localhost:8080/swagger-ui (spec at `/v3/api-docs`) |
 | Prometheus | http://localhost:9090 (check `/targets`: `secure-pix-ledger` should be UP) |
 | Grafana | http://localhost:3000 (credentials from `.env`) |
 

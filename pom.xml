@@ -27,6 +27,9 @@
 		<spotbugs-maven-plugin.version>4.10.5.0</spotbugs-maven-plugin.version>
 		<findsecbugs.version>1.14.0</findsecbugs.version>
 		<dependency-check.version>13.0.0</dependency-check.version>
+
+		<!-- springdoc 3.x is the line built for Spring Boot 4 (3.1.x targets Boot 4.1). -->
+		<springdoc.version>3.1.1</springdoc.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -52,6 +55,11 @@
 		<dependency>
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.springdoc</groupId>
+			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+			<version>${springdoc.version}</version>
 		</dependency>
 
 		<dependency>
