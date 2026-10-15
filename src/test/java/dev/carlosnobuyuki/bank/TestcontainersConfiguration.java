@@ -6,8 +6,9 @@ import org.springframework.context.annotation.Bean;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
+// Public so integration tests in sub-packages (api, infrastructure, ...) can import it.
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfiguration {
+public class TestcontainersConfiguration {
 
   @Bean
   @ServiceConnection
