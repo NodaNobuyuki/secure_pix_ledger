@@ -100,5 +100,6 @@ Each phase has a Definition of Done and starts only after the previous one passe
 | [0008](docs/adr/0008-idempotency-keys.md) | Idempotency keys for transfer creation |
 | [0009](docs/adr/0009-schema-conventions.md) | Schema conventions: checked text enums, named constraints, fixed system ids |
 | [0010](docs/adr/0010-internal-accounts-hidden-from-public-use-cases.md) | Internal accounts are invisible to public use cases |
+| [0011](docs/adr/0011-http-error-contract.md) | HTTP error contract: RFC 9457 problems, strict JSON, no echoed input |
 
 New decisions start from the [template](docs/adr/0000-template.md).
