@@ -95,5 +95,8 @@ Each phase has a Definition of Done and starts only after the previous one passe
 | [0003](docs/adr/0003-ci-supply-chain-hardening.md) | CI hardening and blocking security gates |
 | [0004](docs/adr/0004-dependency-pins-and-overrides.md) | Pinned tool versions and the Tomcat CVE override |
 | [0005](docs/adr/0005-actuator-and-port-exposure.md) | Actuator isolation and minimal port exposure |
+| [0006](docs/adr/0006-double-entry-ledger-and-money.md) | Double-entry ledger, materialized balances, money as minor units |
+| [0007](docs/adr/0007-pessimistic-locking.md) | Pessimistic row locks in deterministic order |
+| [0008](docs/adr/0008-idempotency-keys.md) | Idempotency keys for transfer creation |
 
 New decisions start from the [template](docs/adr/0000-template.md).
