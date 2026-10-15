@@ -99,5 +99,6 @@ Each phase has a Definition of Done and starts only after the previous one passe
 | [0007](docs/adr/0007-pessimistic-locking.md) | Pessimistic row locks in deterministic order |
 | [0008](docs/adr/0008-idempotency-keys.md) | Idempotency keys for transfer creation |
 | [0009](docs/adr/0009-schema-conventions.md) | Schema conventions: checked text enums, named constraints, fixed system ids |
+| [0010](docs/adr/0010-internal-accounts-hidden-from-public-use-cases.md) | Internal accounts are invisible to public use cases |
 
 New decisions start from the [template](docs/adr/0000-template.md).
