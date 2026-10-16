@@ -3,7 +3,7 @@ package dev.carlosnobuyuki.bank.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import dev.carlosnobuyuki.bank.TestcontainersConfiguration;
+import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.domain.InvalidTransferException;
 import dev.carlosnobuyuki.bank.domain.Money;
 import dev.carlosnobuyuki.bank.domain.RejectionReason;
@@ -16,20 +16,16 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * Transfer use cases against PostgreSQL. Not {@code @Transactional}: the services must commit for
- * real, so every test uses fresh accounts and the ledger invariants are checked after each one.
+ * real, so every test uses fresh accounts; {@code @IntegrationTest} checks the ledger after each.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 class TransferServiceTests {
 
   @Autowired TransferService transfers;
@@ -37,26 +33,6 @@ class TransferServiceTests {
   @Autowired AccountService accounts;
   @Autowired JdbcTemplate jdbc;
   @Autowired DataSource dataSource;
-
-  @AfterEach
-  void ledgerInvariantsHold() {
-    assertThat(
-            jdbc.queryForObject(
-                "SELECT COALESCE(SUM(amount_minor), 0) FROM ledger_entries", Long.class))
-        .as("all entries sum to zero")
-        .isZero();
-    assertThat(
-            jdbc.queryForList(
-                """
-                SELECT a.id FROM accounts a
-                LEFT JOIN (SELECT account_id, SUM(amount_minor) AS total
-                           FROM ledger_entries GROUP BY account_id) e ON e.account_id = a.id
-                WHERE a.balance_minor <> COALESCE(e.total, 0)
-                """,
-                UUID.class))
-        .as("accounts whose balance differs from the sum of their entries")
-        .isEmpty();
-  }
 
   @Test
   void depositIssuesMoneyFromSystemFunding() {

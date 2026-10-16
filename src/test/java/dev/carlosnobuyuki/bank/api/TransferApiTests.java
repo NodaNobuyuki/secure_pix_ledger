@@ -2,7 +2,7 @@ package dev.carlosnobuyuki.bank.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import dev.carlosnobuyuki.bank.TestcontainersConfiguration;
+import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.application.AccountService;
 import dev.carlosnobuyuki.bank.application.DepositService;
 import dev.carlosnobuyuki.bank.domain.Money;
@@ -13,16 +13,13 @@ import java.util.UUID;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 @AutoConfigureMockMvc
 class TransferApiTests {
 

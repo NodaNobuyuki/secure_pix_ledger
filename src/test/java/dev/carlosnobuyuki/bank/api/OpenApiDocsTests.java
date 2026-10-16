@@ -2,16 +2,13 @@ package dev.carlosnobuyuki.bank.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import dev.carlosnobuyuki.bank.TestcontainersConfiguration;
+import dev.carlosnobuyuki.bank.IntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
-import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 @AutoConfigureMockMvc
 class OpenApiDocsTests {
 

@@ -3,14 +3,12 @@ package dev.carlosnobuyuki.bank.infrastructure;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import dev.carlosnobuyuki.bank.TestcontainersConfiguration;
+import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.domain.SystemAccounts;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -20,8 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
  * Proves the database rejects invalid states on its own, bypassing the domain model entirely
  * (ADR-0006). Each test runs in a transaction that is rolled back afterwards.
  */
-@Import(TestcontainersConfiguration.class)
-@SpringBootTest
+@IntegrationTest
 @Transactional
 class SchemaConstraintsTests {
 
