@@ -28,6 +28,9 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
       DB_USERNAME: ${POSTGRES_USER}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # "default" is Spring's name for "no profile". Set SPRING_PROFILES_ACTIVE=dev in .env to
+      # seed funded demo accounts; nothing else changes between the two.
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
     ports:
       # Only the public API port is published. The management port (8081: health,
       # metrics) stays on the internal compose network, reachable by Prometheus only.
