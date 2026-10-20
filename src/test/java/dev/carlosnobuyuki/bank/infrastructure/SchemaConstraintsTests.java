@@ -5,26 +5,54 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.domain.SystemAccounts;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * Proves the database rejects invalid states on its own, bypassing the domain model entirely
  * (ADR-0006). Each test runs in a transaction that is rolled back afterwards.
+ *
+ * <p>Runs as the schema owner, not the application role: constraints and triggers must stop even
+ * the role that owns the tables, while the application role cannot attempt most of these statements
+ * at all (ADR-0012, proven by {@link LeastPrivilegeTests}).
  */
 @IntegrationTest
-@Transactional
 class SchemaConstraintsTests {
 
   private static final String HASH = "a".repeat(64);
 
-  @Autowired JdbcTemplate jdbc;
+  @Autowired PostgreSQLContainer postgres;
+
+  private Connection owner;
+  private JdbcTemplate jdbc;
+
+  @BeforeEach
+  void connectAsOwner() throws SQLException {
+    owner =
+        DriverManager.getConnection(
+            postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+    owner.setAutoCommit(false);
+    jdbc = new JdbcTemplate(new SingleConnectionDataSource(owner, true));
+  }
+
+  @AfterEach
+  void rollBack() throws SQLException {
+    try (Connection connection = owner) {
+      connection.rollback();
+    }
+  }
 
   @Test
   void seedsSystemFundingAccountAtZero() {

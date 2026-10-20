@@ -38,6 +38,7 @@ enumerated values, how code finds the `SYSTEM_FUNDING` account, and how failures
   with a constraint violation instead of storing an unknown value.
 - Triggers do not bind the table owner or a superuser, who can disable them. Today the application
   connects as the owner. Phase 2 should run the app with a least-privilege role (no DDL, no
-  `TRUNCATE`) so the append-only rule holds even if the app is compromised.
+  `TRUNCATE`) so the append-only rule holds even if the app is compromised. **Done:**
+  [ADR-0012](0012-least-privilege-database-role.md).
 - Fixed ids are predictable, which is fine for internal accounts because they are never exposed
   through the public API.

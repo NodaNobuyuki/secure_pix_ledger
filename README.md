@@ -124,6 +124,13 @@ docker compose up --build
 All ports bind to `127.0.0.1`. The actuator runs on an internal management port (`8081`) that
 is not published to the host; see [ADR-0005](docs/adr/0005-actuator-and-port-exposure.md).
 
+Migrations run first, in a one-shot `migrate` container that holds the schema owner's
+credentials. The API connects as `APP_DB_USER`, a role that can only read and write rows: no DDL,
+no `DELETE`, no way to disable the ledger triggers
+([ADR-0012](docs/adr/0012-least-privilege-database-role.md)). That role is created when the
+database volume is first initialized, so a volume from before it existed needs one
+`docker compose down -v`.
+
 Other useful commands:
 
 ```bash
@@ -134,14 +141,16 @@ docker compose down              # stop the stack; add -v to also delete the dat
 
 ## Tests
 
-Integration tests run against a real PostgreSQL 17 in Testcontainers. Every class annotated
-`@IntegrationTest` checks the ledger after each test: all entries sum to zero, and every balance
-equals the sum of its account's entries.
+Integration tests run against a real PostgreSQL 17 in Testcontainers, connecting as the same
+least-privilege role as the deployed app, so a missing grant fails the build. Every class
+annotated `@IntegrationTest` checks the ledger after each test: all entries sum to zero, and
+every balance equals the sum of its account's entries.
 
 | Suite | What it covers |
 |---|---|
 | `domain/*Test` | Money arithmetic and overflow, transfer and account rules (plain unit tests, no Spring) |
-| `SchemaConstraintsTests` | The database alone rejects invalid states, bypassing the domain model |
+| `SchemaConstraintsTests` | The database alone rejects invalid states, bypassing the domain model, even for the schema owner |
+| `LeastPrivilegeTests` | The app's database role cannot delete, truncate, alter tables or disable the ledger triggers |
 | `JpaRepositoriesTests` | Persistence adapters round-trip, and writes require the row lock |
 | `TransferServiceTests` | Use cases: stored rejections, replay, key reuse, race replay, lock timeout |
 | `ConcurrentTransfersTests` | 500 transfers at once: a drained hot account, crossed pairs, a random mesh |
@@ -218,5 +227,6 @@ These are deliberate at the end of Phase 1:
 | [0009](docs/adr/0009-schema-conventions.md) | Schema conventions: checked text enums, named constraints, fixed system ids |
 | [0010](docs/adr/0010-internal-accounts-hidden-from-public-use-cases.md) | Internal accounts are invisible to public use cases |
 | [0011](docs/adr/0011-http-error-contract.md) | HTTP error contract: RFC 9457 problems, strict JSON, no echoed input |
+| [0012](docs/adr/0012-least-privilege-database-role.md) | Run the application as a least-privilege database role |
 
 New decisions start from the [template](docs/adr/0000-template.md).

@@ -1,4 +1,4 @@
-# Local stack: API + PostgreSQL + Prometheus + Grafana.
+# Local stack: API + PostgreSQL (+ one-shot migrations) + Prometheus + Grafana.
 # Host ports bind to 127.0.0.1 only, so nothing is reachable from the LAN.
 # `${VAR:?}` makes compose refuse to start when .env is missing a secret, instead of
 # silently falling back to a weak default.
@@ -12,8 +12,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
       POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # The role the app connects as, created by the init script below (ADR-0012).
+      APP_DB_USER: ${APP_DB_USER:?set APP_DB_USER in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Runs only when the data volume is first created.
+      - ./ops/postgres/init:/docker-entrypoint-initdb.d:ro
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
@@ -22,12 +27,31 @@ services:
       timeout: 3s
       retries: 10
 
+  # Applies the migrations as the schema owner, then exits. Only this one-shot container gets the
+  # owner credentials (ADR-0012). Keep the tag equal to the flyway.version Spring Boot manages.
+  migrate:
+    image: flyway/flyway:12.4.0-alpine
+    environment:
+      FLYWAY_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      FLYWAY_USER: ${POSTGRES_USER}
+      FLYWAY_PASSWORD: ${POSTGRES_PASSWORD}
+      FLYWAY_LOCATIONS: filesystem:/flyway/migrations
+    command: ["-placeholders.app_role=${APP_DB_USER}", "migrate"]
+    volumes:
+      - ./src/main/resources/db/migration:/flyway/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   app:
     build: .
     environment:
       DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-      DB_USERNAME: ${POSTGRES_USER}
-      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      # Least-privilege role: rows only, no DDL, no DELETE (ADR-0012).
+      DB_USERNAME: ${APP_DB_USER}
+      DB_PASSWORD: ${APP_DB_PASSWORD}
+      # The migrate service already ran; the app has no rights to migrate anyway.
+      SPRING_FLYWAY_ENABLED: "false"
       # "default" is Spring's name for "no profile". Set SPRING_PROFILES_ACTIVE=dev in .env to
       # seed funded demo accounts; nothing else changes between the two.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
@@ -38,6 +62,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/actuator/health"]
       interval: 10s
