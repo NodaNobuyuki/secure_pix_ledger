@@ -14,8 +14,9 @@ with a tamper-evident audit trail, fraud detection and observability.
 
 ## Status
 
-**Phase 1 (financial correctness) is complete.** Phase 2 (identity) is next; until then the API
-has **no authentication**, so run it only on your own machine. See the [roadmap](#roadmap) and
+**Phase 1 (financial correctness) is complete.** Phase 2 (identity) is in progress: users can
+register, but no endpoint requires logging in yet, so the API has **no authentication** and
+should run only on your own machine. See the [roadmap](#roadmap) and
 the [known limitations](#known-limitations).
 
 ## What the ledger guarantees
@@ -60,6 +61,7 @@ amounts anywhere, including the JSON parser, which rejects `25.5`.
 | `GET` | `/accounts/{id}` | `200`: status and balance |
 | `POST` | `/transfers` | `201` completed, or `422` rejected; requires an `Idempotency-Key` header |
 | `GET` | `/transfers/{id}` | `200`: a stored transfer |
+| `POST` | `/auth/register` | `201`: registers a customer; `409` if the username is taken |
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problems
 (`application/problem+json`), documented in [docs/problems.md](docs/problems.md). Unknown JSON
@@ -153,6 +155,7 @@ every balance equals the sum of its account's entries.
 | `LeastPrivilegeTests` | The app's database role cannot delete, truncate, alter tables or disable the ledger triggers |
 | `JpaRepositoriesTests` | Persistence adapters round-trip, and writes require the row lock |
 | `TransferServiceTests` | Use cases: stored rejections, replay, key reuse, race replay, lock timeout |
+| `RegistrationServiceTests` | Concurrent sign-ups with one username create exactly one user |
 | `ConcurrentTransfersTests` | 500 transfers at once: a drained hot account, crossed pairs, a random mesh |
 | `ParallelIdempotencyTests` | One key under contention: identical requests execute once, different ones get `422` |
 | `*ApiTests` | HTTP contract: status codes, problem types, headers, strict JSON |
@@ -228,5 +231,6 @@ These are deliberate at the end of Phase 1:
 | [0010](docs/adr/0010-internal-accounts-hidden-from-public-use-cases.md) | Internal accounts are invisible to public use cases |
 | [0011](docs/adr/0011-http-error-contract.md) | HTTP error contract: RFC 9457 problems, strict JSON, no echoed input |
 | [0012](docs/adr/0012-least-privilege-database-role.md) | Run the application as a least-privilege database role |
+| [0013](docs/adr/0013-password-storage-and-registration.md) | Hash passwords with Argon2id; log in with usernames, not emails |
 
 New decisions start from the [template](docs/adr/0000-template.md).

@@ -16,6 +16,7 @@ final class Problems {
   static final URI IDEMPOTENCY_KEY_REUSED = URI.create(BASE + "idempotency-key-reused");
   static final URI INVALID_TRANSFER = URI.create(BASE + "invalid-transfer");
   static final URI ACCOUNT_BUSY = URI.create(BASE + "account-busy");
+  static final URI USERNAME_TAKEN = URI.create(BASE + "username-taken");
 
   private Problems() {}
 

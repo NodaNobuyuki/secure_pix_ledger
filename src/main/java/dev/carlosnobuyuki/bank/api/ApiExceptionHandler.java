@@ -2,7 +2,10 @@ package dev.carlosnobuyuki.bank.api;
 
 import dev.carlosnobuyuki.bank.application.AccountNotFoundException;
 import dev.carlosnobuyuki.bank.application.IdempotencyKeyReusedException;
+import dev.carlosnobuyuki.bank.application.auth.UsernameTakenException;
 import dev.carlosnobuyuki.bank.domain.InvalidTransferException;
+import dev.carlosnobuyuki.bank.domain.auth.InvalidPasswordException;
+import dev.carlosnobuyuki.bank.domain.auth.InvalidUsernameException;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -32,6 +35,8 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
   // Seconds. Short, since the lock holder is another transfer that finishes in milliseconds.
   private static final String RETRY_AFTER_SECONDS = "1";
+
+  private static final String INVALID_FIELDS = "The request has invalid fields.";
 
   @ExceptionHandler
   ProblemDetail accountNotFound(AccountNotFoundException e) {
@@ -76,6 +81,27 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
   }
 
   @ExceptionHandler
+  ProblemDetail usernameTaken(UsernameTakenException e) {
+    return Problems.of(
+        HttpStatus.CONFLICT,
+        Problems.USERNAME_TAKEN,
+        "Username taken",
+        "This username is already registered.");
+  }
+
+  // Domain format rules, reported like Bean Validation errors. The messages are fixed strings
+  // written by us and never contain the rejected value.
+  @ExceptionHandler
+  ProblemDetail invalidUsername(InvalidUsernameException e) {
+    return invalidField("username", e.getMessage());
+  }
+
+  @ExceptionHandler
+  ProblemDetail invalidPassword(InvalidPasswordException e) {
+    return invalidField("password", e.getMessage());
+  }
+
+  @ExceptionHandler
   ProblemDetail unexpected(Exception e) {
     log.error("Unhandled exception", e);
     return ProblemDetail.forStatusAndDetail(
@@ -100,9 +126,16 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
                         String.valueOf(error.getDefaultMessage())))
             .toList();
     ProblemDetail problem = e.getBody();
-    problem.setDetail("The request has invalid fields.");
+    problem.setDetail(INVALID_FIELDS);
     problem.setProperty("errors", errors);
     return handleExceptionInternal(e, problem, headers, status, request);
+  }
+
+  private static ProblemDetail invalidField(String field, String message) {
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, INVALID_FIELDS);
+    problem.setProperty("errors", List.of(Map.of("field", field, "message", message)));
+    return problem;
   }
 
   // Spring's default detail repeats the rejected value and the target Java type.

@@ -23,6 +23,7 @@ fields; Spring's default error details repeat the rejected value and name Java t
 | Unknown transfer | `404` | `about:blank` |
 | Business rejection, stored as `REJECTED` ([ADR-0008](0008-idempotency-keys.md)) | `422` | `transfer-rejected` (+ `reason`, `transferId`) |
 | Key reused for a different request | `422` | `idempotency-key-reused` |
+| Username already registered ([ADR-0013](0013-password-storage-and-registration.md)) | `409` | `username-taken` |
 | Semantically invalid transfer (same account, currency mismatch) | `422` | `invalid-transfer` |
 | Lock wait timed out ([ADR-0007](0007-pessimistic-locking.md)) | `503` + `Retry-After: 1` | `account-busy` |
 | Anything else | `500` | `about:blank`, fixed detail, logged server-side |

@@ -43,3 +43,9 @@ are the same account. Nothing is stored and the key is not consumed.
 `503`, with a `Retry-After` header in seconds. One of the accounts stayed locked by another
 transfer for too long. Nothing was executed; retry after the delay **with the same
 `Idempotency-Key`**, which guarantees the transfer happens at most once.
+
+## username-taken
+
+`409`. `POST /auth/register` asked for a username that is already registered. Usernames are
+compared case-insensitively, so `Alice` and `alice` are the same name. Nothing was stored; choose
+another username ([ADR-0013](adr/0013-password-storage-and-registration.md)).
