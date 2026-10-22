@@ -16,8 +16,8 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * The application's own connection cannot rewrite history, remove the ledger's guards or change an
- * account's type, even if the application is compromised (ADR-0012).
+ * The application's own connection cannot rewrite history, remove the ledger's guards, change an
+ * account's type or promote a user, even if the application is compromised (ADR-0012).
  */
 @IntegrationTest
 class LeastPrivilegeTests {
@@ -57,6 +57,9 @@ class LeastPrivilegeTests {
         "DELETE FROM transfers",
         "UPDATE accounts SET type = 'SYSTEM'",
         "DELETE FROM accounts",
+        "UPDATE users SET role = 'ADMIN'",
+        "UPDATE users SET password_hash = '{noop}x'",
+        "DELETE FROM users",
         "ALTER TABLE accounts DROP CONSTRAINT accounts_customer_balance_non_negative",
         "DROP TABLE accounts",
         "CREATE TABLE shadow_ledger (id INT)",

@@ -30,6 +30,9 @@
 
 		<!-- springdoc 3.x is the line built for Spring Boot 4 (3.1.x targets Boot 4.1). -->
 		<springdoc.version>3.1.1</springdoc.version>
+
+		<!-- Not managed by Boot; Spring Security's Argon2 encoder needs it at runtime (ADR-0013). -->
+		<bouncycastle.version>1.86</bouncycastle.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -60,6 +63,16 @@
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 			<version>${springdoc.version}</version>
+		</dependency>
+		<!-- Password encoders only: this does not enable Spring Security's web filters. -->
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-crypto</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>${bouncycastle.version}</version>
 		</dependency>
 
 		<dependency>

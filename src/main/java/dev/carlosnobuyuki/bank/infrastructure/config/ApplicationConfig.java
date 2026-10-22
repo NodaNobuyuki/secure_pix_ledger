@@ -4,8 +4,11 @@ import dev.carlosnobuyuki.bank.application.AccountService;
 import dev.carlosnobuyuki.bank.application.DepositService;
 import dev.carlosnobuyuki.bank.application.TransferExecutor;
 import dev.carlosnobuyuki.bank.application.TransferService;
+import dev.carlosnobuyuki.bank.application.auth.RegistrationService;
 import dev.carlosnobuyuki.bank.application.port.AccountRepository;
+import dev.carlosnobuyuki.bank.application.port.PasswordHasher;
 import dev.carlosnobuyuki.bank.application.port.TransferRepository;
+import dev.carlosnobuyuki.bank.application.port.UserRepository;
 import java.time.Clock;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -42,5 +45,11 @@ class ApplicationConfig {
   @Bean
   AccountService accountService(AccountRepository accounts, Clock clock) {
     return new AccountService(accounts, clock);
+  }
+
+  @Bean
+  RegistrationService registrationService(
+      UserRepository users, PasswordHasher hasher, Clock clock) {
+    return new RegistrationService(users, hasher, clock);
   }
 }

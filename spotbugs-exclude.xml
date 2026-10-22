@@ -17,6 +17,7 @@
     <Or>
       <Field type="dev.carlosnobuyuki.bank.application.port.AccountRepository"/>
       <Field type="dev.carlosnobuyuki.bank.application.port.TransferRepository"/>
+      <Field type="dev.carlosnobuyuki.bank.application.port.UserRepository"/>
     </Or>
   </Match>
 </FindBugsFilter>

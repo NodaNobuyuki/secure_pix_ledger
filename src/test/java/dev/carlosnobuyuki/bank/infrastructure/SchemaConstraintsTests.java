@@ -32,6 +32,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 class SchemaConstraintsTests {
 
   private static final String HASH = "a".repeat(64);
+  private static final String ENCODED_HASH = "{argon2}$argon2id$v=19$m=19456,t=2,p=1$x$y";
 
   @Autowired PostgreSQLContainer postgres;
 
@@ -190,6 +191,45 @@ class SchemaConstraintsTests {
     assertThatThrownBy(() -> jdbc.execute("TRUNCATE ledger_entries"))
         .isInstanceOf(DataAccessException.class)
         .hasMessageContaining("append-only");
+  }
+
+  @Test
+  void rejectsUsernameThatIsNotNormalized() {
+    assertThatThrownBy(() -> insertUser("Alice", "CUSTOMER", ENCODED_HASH))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("users_username_format");
+  }
+
+  @Test
+  void rejectsDuplicateUsername() {
+    insertUser("schema-dup", "CUSTOMER", ENCODED_HASH);
+
+    assertThatThrownBy(() -> insertUser("schema-dup", "CUSTOMER", ENCODED_HASH))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("users_username_unique");
+  }
+
+  @Test
+  void rejectsUnknownRole() {
+    assertThatThrownBy(() -> insertUser("schema-root", "ROOT", ENCODED_HASH))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("users_role_valid");
+  }
+
+  @Test
+  void rejectsPasswordHashWithoutAlgorithmPrefix() {
+    assertThatThrownBy(() -> insertUser("schema-plain", "CUSTOMER", "correct horse battery"))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("users_password_hash_encoded");
+  }
+
+  private void insertUser(String username, String role, String passwordHash) {
+    jdbc.update(
+        "INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)",
+        UUID.randomUUID(),
+        username,
+        passwordHash,
+        role);
   }
 
   private UUID insertAccount(String type, long balanceMinor) {
