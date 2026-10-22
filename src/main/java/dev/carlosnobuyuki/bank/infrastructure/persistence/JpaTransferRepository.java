@@ -8,7 +8,6 @@ import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
 import java.util.Optional;
 import java.util.UUID;
-import org.hibernate.exception.ConstraintViolationException;
 import org.springframework.stereotype.Repository;
 
 @Repository
@@ -36,21 +35,11 @@ class JpaTransferRepository implements TransferRepository {
       result.entries().forEach(entry -> entityManager.persist(LedgerEntryEntity.from(entry)));
       entityManager.flush();
     } catch (PersistenceException e) {
-      if (violates(e, IDEMPOTENCY_KEY_CONSTRAINT)) {
+      if (ConstraintViolations.violates(e, IDEMPOTENCY_KEY_CONSTRAINT)) {
         throw new DuplicateIdempotencyKeyException(transfer.idempotencyKey(), e);
       }
       throw e;
     }
-  }
-
-  // Hibernate may throw its ConstraintViolationException directly or wrapped, so walk the causes.
-  private static boolean violates(Throwable error, String constraintName) {
-    for (Throwable t = error; t != null; t = t.getCause()) {
-      if (t instanceof ConstraintViolationException violation) {
-        return constraintName.equals(violation.getConstraintName());
-      }
-    }
-    return false;
   }
 
   @Override
