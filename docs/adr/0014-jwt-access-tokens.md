@@ -1,6 +1,6 @@
 # ADR-0014: Authenticate API calls with short-lived RS256 JWT access tokens
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-22
 
 ## Context
