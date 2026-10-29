@@ -76,6 +76,7 @@ for this one command; the stack never seeds unless you ask for it.
 
 ```bash
 cp .env.example .env                                  # then replace every "change-me" value
+ops/scripts/generate-jwt-keys.sh                      # access token signing keys (once)
 SPRING_PROFILES_ACTIVE=dev docker compose up -d --build
 
 A=d0000000-0000-4000-8000-000000000001                # seeded with R$1,000.00
@@ -113,6 +114,7 @@ Full stack (API, PostgreSQL, Prometheus, Grafana), without demo data:
 
 ```bash
 cp .env.example .env         # then replace every "change-me" value
+ops/scripts/generate-jwt-keys.sh   # access token signing keys, written to the git-ignored secrets/
 docker compose up --build
 ```
 

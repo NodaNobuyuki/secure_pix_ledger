@@ -58,6 +58,12 @@ services:
       # "default" is Spring's name for "no profile". Set SPRING_PROFILES_ACTIVE=dev in .env to
       # seed funded demo accounts; nothing else changes between the two.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
+      # Access token signing keys (ADR-0014), mounted from the secrets below.
+      JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
+      JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key
+    secrets:
+      - jwt_private_key
+      - jwt_public_key
     ports:
       # Only the public API port is published. The management port (8081: health,
       # metrics) stays on the internal compose network, reachable by Prometheus only.
@@ -100,6 +106,14 @@ services:
       - "127.0.0.1:3000:3000"
     depends_on:
       - prometheus
+
+# Written by ops/scripts/generate-jwt-keys.sh. If a file is missing, the app container does not
+# start: there is no fallback key (ADR-0014).
+secrets:
+  jwt_private_key:
+    file: ./secrets/jwt-private.pem
+  jwt_public_key:
+    file: ./secrets/jwt-public.pem
 
 volumes:
   pgdata:

@@ -1,5 +1,9 @@
 package dev.carlosnobuyuki.bank;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyPair;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.DynamicPropertyRegistrar;
@@ -40,6 +44,23 @@ public class TestcontainersConfiguration {
       registry.add("spring.flyway.user", postgres::getUsername);
       registry.add("spring.flyway.password", postgres::getPassword);
       registry.add("spring.flyway.placeholders.app_role", () -> APP_ROLE);
+    };
+  }
+
+  // A fresh key pair per Spring context, loaded from PEM files exactly as in production (ADR-0014).
+  // 2048 bits, the minimum the app accepts, keeps key generation fast.
+  @Bean
+  DynamicPropertyRegistrar jwtKeyProperties() throws IOException {
+    Path dir = Files.createTempDirectory("jwt-keys");
+    dir.toFile().deleteOnExit();
+    KeyPair pair = TestJwtKeys.generate(2048);
+    Path privateKey = TestJwtKeys.writePrivateKey(pair, dir.resolve("jwt-private.pem"));
+    Path publicKey = TestJwtKeys.writePublicKey(pair, dir.resolve("jwt-public.pem"));
+    privateKey.toFile().deleteOnExit();
+    publicKey.toFile().deleteOnExit();
+    return registry -> {
+      registry.add("app.jwt.private-key-path", privateKey::toString);
+      registry.add("app.jwt.public-key-path", publicKey::toString);
     };
   }
 }
