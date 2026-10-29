@@ -41,6 +41,10 @@ an existing key first (fast path), but two requests can both pass that check. Wh
 PostgreSQL blocks the second `INSERT` on the unique index until the first transaction finishes.
 It then raises a unique violation, the loser's transaction rolls back, and the loser reads the
 winner's row **in a new transaction** and replays it (or returns `422` if the hash differs).
+*Note (2026-10-29):* keys are now scoped per initiator, so the guard is
+`UNIQUE NULLS NOT DISTINCT (initiated_by, idempotency_key)` and the lookup takes the caller's id
+too ([ADR-0015](0015-resource-ownership.md)). Internal deposits have no initiator (`NULL`);
+`NULLS NOT DISTINCT` keeps their keys unique among themselves. The race handling is unchanged.
 
 ## Alternatives considered
 
@@ -56,8 +60,8 @@ winner's row **in a new transaction** and replays it (or returns `422` if the ha
 ## Consequences
 
 - One transfer row per key, enforced by the database, not just by application code.
-- Keys are unique globally in Phase 1. Phase 2 scopes them per client:
-  `UNIQUE (client_id, idempotency_key)`, so one client cannot probe or collide with another's keys.
+- Keys were unique globally in Phase 1. Phase 2 scopes them per user (see the note above), so one
+  user cannot probe, replay or collide with another's keys.
 - Keys never expire for now. A retention policy (for example, 24 h of replay) can come later; it
   does not change correctness.
 - Tests must cover sequential replay, parallel replay (one transfer, two entries) and

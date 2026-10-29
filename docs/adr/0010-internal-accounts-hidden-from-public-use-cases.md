@@ -36,5 +36,8 @@ different problem from ownership: it breaks the money supply, not one customer's
 - The check runs after the accounts are locked, so a public request naming `SYSTEM_FUNDING` briefly
   locks it before failing. Acceptable for now; if the funding account becomes a contention point,
   reject known internal ids before locking.
+  *Note (2026-10-29):* a public transfer now checks that the caller owns the source before locking
+  ([ADR-0015](0015-resource-ownership.md)). A `SYSTEM` source has no owner, so it fails there; only
+  a `SYSTEM` destination still takes the lock first.
 - Customers cannot yet see deposits into their accounts through `GET /transfers/{id}`. A statement
   endpoint in a later phase should show them without exposing the funding account's id.
