@@ -51,12 +51,19 @@ jobs:
           output: sarif-results
 
       # The analyze step only reports; this makes any finding fail the pipeline, as the brief requires.
-      # One exception (ADR-0003): tests build weak RSA keys on purpose to prove we reject them.
+      # Accepted findings are listed as [rule, path prefix], each justified in ADR-0003.
       - name: Fail on findings
         run: |
-          jq -s '[.[].runs[].results[]
-            | select((.ruleId == "java/insufficient-key-size"
-                and (.locations[0].physicalLocation.artifactLocation.uri | startswith("src/test/"))) | not)]' \
+          jq -s '
+            [["java/insufficient-key-size", "src/test/"],
+             ["java/spring-disabled-csrf-protection",
+              "src/main/java/dev/carlosnobuyuki/bank/infrastructure/security/SecurityConfig.java"]]
+              as $accepted
+            | [.[].runs[].results[]
+                | .ruleId as $rule
+                | .locations[0].physicalLocation.artifactLocation.uri as $uri
+                | select(any($accepted[]; . as [$accepted_rule, $prefix]
+                    | $rule == $accepted_rule and ($uri | startswith($prefix))) | not)]' \
             sarif-results/*.sarif > findings.json
           if [ "$(jq length findings.json)" -gt 0 ]; then
             jq -r '.[] | "::error file=\(.locations[0].physicalLocation.artifactLocation.uri),line=\(.locations[0].physicalLocation.region.startLine)::\(.ruleId): \(.message.text)"' findings.json

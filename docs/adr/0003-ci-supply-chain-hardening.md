@@ -32,7 +32,7 @@ Workflows: `.github/workflows/ci.yml` and `.github/workflows/codeql.yml`.
 | Spotless (google-java-format) | `verify` phase | unformatted code |
 | SpotBugs + FindSecBugs | `verify` phase | findings at Medium or above |
 | OWASP Dependency-Check | `dependency-check` job | any dependency CVE with CVSS ≥ 7 |
-| CodeQL (`security-extended`) | `codeql.yml` | **any** finding (explicit SARIF check, since the action only reports by default), with one exception below |
+| CodeQL (`security-extended`) | `codeql.yml` | **any** finding (explicit SARIF check, since the action only reports by default), with the exceptions below |
 
 **Operational details**
 - A weekly scheduled run catches CVEs and new CodeQL queries even when code does not change.
@@ -41,10 +41,16 @@ Workflows: `.github/workflows/ci.yml` and `.github/workflows/codeql.yml`.
 - The `NVD_API_KEY` secret is required; the job fails fast with a clear message if it is missing.
 - Suppressions live in `spotbugs-exclude.xml` and `dependency-check-suppressions.xml`, each entry
   with a written reason (and an `until` date for CVEs).
-- *Note (2026-10-29):* the CodeQL gate ignores one rule, `java/insufficient-key-size`, and only
-  under `src/test/`. `JwtKeysTest` builds a 1024-bit RSA key on purpose, to prove that keys under
-  2048 bits are rejected ([ADR-0014](0014-jwt-access-tokens.md)). Production code is still
-  checked by every rule.
+- *Note (2026-10-29):* the CodeQL gate accepts two findings, each one rule in one place. Every
+  other rule still applies there, and each rule still applies everywhere else.
+  - `java/insufficient-key-size` under `src/test/`. `JwtKeysTest` builds a 1024-bit RSA key on
+    purpose, to prove that keys under 2048 bits are rejected
+    ([ADR-0014](0014-jwt-access-tokens.md)).
+  - `java/spring-disabled-csrf-protection` in `SecurityConfig.java` only. CSRF needs a browser to
+    attach credentials by itself, and this API has none it would attach: the access token travels
+    in the `Authorization` header, no cookie is ever set, and HTTP Basic is off (ADR-0014). If
+    cookies or a browser session ever appear, CSRF protection must come back and this exception
+    must go.
 
 ## Alternatives considered
 
