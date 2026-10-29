@@ -10,11 +10,12 @@ import org.springframework.context.annotation.Import;
 
 /**
  * Full application context against a Testcontainers PostgreSQL. The ledger invariants are checked
- * after every test, so no integration test can leave the books unbalanced unnoticed.
+ * after every test, so no integration test can leave the books unbalanced unnoticed. Time comes
+ * from a {@link MutableClock}, reset after every test, and {@link AuthFixture} logs users in.
  */
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 @SpringBootTest
-@Import(TestcontainersConfiguration.class)
-@ExtendWith(LedgerInvariantExtension.class)
+@Import({TestcontainersConfiguration.class, TestSupportConfiguration.class})
+@ExtendWith({LedgerInvariantExtension.class, ResetClockExtension.class})
 public @interface IntegrationTest {}

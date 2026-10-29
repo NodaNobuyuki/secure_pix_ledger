@@ -2,6 +2,7 @@ package dev.carlosnobuyuki.bank.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.carlosnobuyuki.bank.AuthFixture;
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.application.AccountService;
 import dev.carlosnobuyuki.bank.application.DepositService;
@@ -11,9 +12,11 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.util.UUID;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
@@ -24,9 +27,18 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 class TransferApiTests {
 
   @Autowired MockMvcTester mvc;
+  @Autowired AuthFixture auth;
   @Autowired AccountService accounts;
   @Autowired DepositService deposits;
   @Autowired DataSource dataSource;
+
+  // Value of the Authorization header; every endpoint here needs a logged-in user (ADR-0014).
+  private String bearer;
+
+  @BeforeEach
+  void logIn() {
+    bearer = auth.newCustomer().authorization();
+  }
 
   @Test
   void completedTransferIs201WithLocation() {
@@ -40,8 +52,9 @@ class TransferApiTests {
     assertThat(result).bodyJson().extractingPath("$.id").isEqualTo(id);
     assertThat(result).bodyJson().extractingPath("$.status").isEqualTo("COMPLETED");
     assertThat(result).bodyJson().extractingPath("$.amountMinor").isEqualTo(300);
-    assertThat(mvc.get().uri("/transfers/{id}", id)).hasStatusOk();
-    assertThat(mvc.get().uri("/accounts/{id}", a))
+    assertThat(mvc.get().uri("/transfers/{id}", id).header(HttpHeaders.AUTHORIZATION, bearer))
+        .hasStatusOk();
+    assertThat(mvc.get().uri("/accounts/{id}", a).header(HttpHeaders.AUTHORIZATION, bearer))
         .bodyJson()
         .extractingPath("$.balanceMinor")
         .isEqualTo(700);
@@ -59,7 +72,7 @@ class TransferApiTests {
     assertThat(second).hasStatus(HttpStatus.CREATED).hasHeader("Idempotent-Replayed", "true");
     assertThat(second.getResponse().getContentAsString())
         .isEqualTo(first.getResponse().getContentAsString());
-    assertThat(mvc.get().uri("/accounts/{id}", a))
+    assertThat(mvc.get().uri("/accounts/{id}", a).header(HttpHeaders.AUTHORIZATION, bearer))
         .bodyJson()
         .extractingPath("$.balanceMinor")
         .isEqualTo(700);
@@ -83,7 +96,8 @@ class TransferApiTests {
         (String)
             com.jayway.jsonpath.JsonPath.read(
                 first.getResponse().getContentAsString(), "$.transferId");
-    assertThat(mvc.get().uri("/transfers/{id}", transferId))
+    assertThat(
+            mvc.get().uri("/transfers/{id}", transferId).header(HttpHeaders.AUTHORIZATION, bearer))
         .bodyJson()
         .extractingPath("$.status")
         .isEqualTo("REJECTED");
@@ -120,6 +134,7 @@ class TransferApiTests {
     assertThat(
             mvc.post()
                 .uri("/transfers")
+                .header(HttpHeaders.AUTHORIZATION, bearer)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body(a, b, 1)))
         .hasStatus(HttpStatus.BAD_REQUEST);
@@ -130,6 +145,7 @@ class TransferApiTests {
     MvcTestResult result =
         mvc.post()
             .uri("/transfers")
+            .header(HttpHeaders.AUTHORIZATION, bearer)
             .header("Idempotency-Key", "not-a-uuid<script>")
             .contentType(MediaType.APPLICATION_JSON)
             .content(body(UUID.randomUUID(), UUID.randomUUID(), 1))
@@ -210,7 +226,11 @@ class TransferApiTests {
 
   @Test
   void unknownTransferIs404() {
-    assertThat(mvc.get().uri("/transfers/{id}", UUID.randomUUID())).hasStatus(HttpStatus.NOT_FOUND);
+    assertThat(
+            mvc.get()
+                .uri("/transfers/{id}", UUID.randomUUID())
+                .header(HttpHeaders.AUTHORIZATION, bearer))
+        .hasStatus(HttpStatus.NOT_FOUND);
   }
 
   @Test
@@ -236,6 +256,7 @@ class TransferApiTests {
   private MvcTestResult post(UUID idempotencyKey, String json) {
     return mvc.post()
         .uri("/transfers")
+        .header(HttpHeaders.AUTHORIZATION, bearer)
         .header("Idempotency-Key", idempotencyKey.toString())
         .contentType(MediaType.APPLICATION_JSON)
         .content(json)

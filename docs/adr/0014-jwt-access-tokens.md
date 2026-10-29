@@ -62,6 +62,12 @@ where another is expected.
     ADR-0015.
   - Actuator lives on its own unpublished port ([ADR-0005](0005-actuator-and-port-exposure.md))
     and is not affected by this chain.
+  - *Note (2026-10-29):* Boot installs the security filter on the management port too, so "not
+    affected" takes a second chain. It matches only actuator requests on the management port and
+    lets `health`, `info` and `prometheus` through without a token; any endpoint exposed later is
+    denied until it gets a rule. On the API port, `/actuator/**` gets the usual `401`.
+  - Public endpoints ignore any bearer token sent to them, so a stale token left in a client's
+    default headers cannot make login itself fail.
 - **Login:**
   - `POST /auth/login {username, password}` returns `200`
     `{accessToken, tokenType: "Bearer", expiresIn: 600}` with `Cache-Control: no-store`.
@@ -79,6 +85,11 @@ where another is expected.
     again. There is **no `error_description`**: Spring's default says why the token failed
     (expired, bad signature, wrong audience), which helps an attacker more than a client.
   - An authenticated caller without the right role gets `403`.
+  - *Note (2026-10-29):* the entry point and the access-denied handler hand the exception to
+    Spring MVC's `HandlerExceptionResolver`, so `ApiExceptionHandler` writes these problems like
+    every other error. Both use `type: about:blank`, since the status already says what happened.
+    Spring Security 7 also gives every token-authenticated request a `FACTOR_BEARER` authority;
+    nothing uses it yet.
 
 ## Alternatives considered
 

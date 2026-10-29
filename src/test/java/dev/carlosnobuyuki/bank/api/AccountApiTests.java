@@ -2,12 +2,15 @@ package dev.carlosnobuyuki.bank.api;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.carlosnobuyuki.bank.AuthFixture;
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.domain.SystemAccounts;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
@@ -18,10 +21,20 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 class AccountApiTests {
 
   @Autowired MockMvcTester mvc;
+  @Autowired AuthFixture auth;
+
+  // Value of the Authorization header; every endpoint here needs a logged-in user (ADR-0014).
+  private String bearer;
+
+  @BeforeEach
+  void logIn() {
+    bearer = auth.newCustomer().authorization();
+  }
 
   @Test
   void opensAccountWithZeroBalance() {
-    MvcTestResult result = mvc.post().uri("/accounts").exchange();
+    MvcTestResult result =
+        mvc.post().uri("/accounts").header(HttpHeaders.AUTHORIZATION, bearer).exchange();
 
     assertThat(result).hasStatus(HttpStatus.CREATED);
     String id = result.getResponse().getHeader("Location").replace("/accounts/", "");
@@ -33,9 +46,15 @@ class AccountApiTests {
 
   @Test
   void getsAccount() {
-    String location = mvc.post().uri("/accounts").exchange().getResponse().getHeader("Location");
+    String location =
+        mvc.post()
+            .uri("/accounts")
+            .header(HttpHeaders.AUTHORIZATION, bearer)
+            .exchange()
+            .getResponse()
+            .getHeader("Location");
 
-    assertThat(mvc.get().uri(location))
+    assertThat(mvc.get().uri(location).header(HttpHeaders.AUTHORIZATION, bearer))
         .hasStatusOk()
         .bodyJson()
         .extractingPath("$.balanceMinor")
@@ -44,7 +63,11 @@ class AccountApiTests {
 
   @Test
   void unknownAccountIsProblem404() {
-    MvcTestResult result = mvc.get().uri("/accounts/{id}", UUID.randomUUID()).exchange();
+    MvcTestResult result =
+        mvc.get()
+            .uri("/accounts/{id}", UUID.randomUUID())
+            .header(HttpHeaders.AUTHORIZATION, bearer)
+            .exchange();
 
     assertThat(result)
         .hasStatus(HttpStatus.NOT_FOUND)
@@ -60,10 +83,16 @@ class AccountApiTests {
   void systemAccountLooksExactlyLikeUnknownAccount() throws Exception {
     UUID unknownId = UUID.randomUUID();
     String unknown =
-        mvc.get().uri("/accounts/{id}", unknownId).exchange().getResponse().getContentAsString();
+        mvc.get()
+            .uri("/accounts/{id}", unknownId)
+            .header(HttpHeaders.AUTHORIZATION, bearer)
+            .exchange()
+            .getResponse()
+            .getContentAsString();
     String system =
         mvc.get()
             .uri("/accounts/{id}", SystemAccounts.FUNDING_ID)
+            .header(HttpHeaders.AUTHORIZATION, bearer)
             .exchange()
             .getResponse()
             .getContentAsString();
@@ -75,7 +104,11 @@ class AccountApiTests {
 
   @Test
   void malformedIdIs400WithoutEchoingInput() {
-    MvcTestResult result = mvc.get().uri("/accounts/not-a-uuid<script>").exchange();
+    MvcTestResult result =
+        mvc.get()
+            .uri("/accounts/not-a-uuid<script>")
+            .header(HttpHeaders.AUTHORIZATION, bearer)
+            .exchange();
 
     assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
     assertThat(result)

@@ -18,6 +18,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -103,6 +106,34 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
         .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
         .body(problem);
+  }
+
+  // A missing or rejected access token, passed on by Spring Security's entry point. The detail and
+  // challenge never say why a token failed (expired, bad signature, wrong audience): that helps an
+  // attacker more than a client, which only needs to know it should log in again (ADR-0014).
+  @ExceptionHandler
+  ResponseEntity<ProblemDetail> unauthenticated(AuthenticationException e) {
+    ProblemDetail problem =
+        ProblemDetail.forStatusAndDetail(
+            HttpStatus.UNAUTHORIZED, "A valid access token is required.");
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .header(HttpHeaders.WWW_AUTHENTICATE, bearerChallenge(e))
+        .body(problem);
+  }
+
+  @ExceptionHandler
+  ProblemDetail forbidden(AccessDeniedException e) {
+    return ProblemDetail.forStatusAndDetail(
+        HttpStatus.FORBIDDEN, "You do not have access to this resource.");
+  }
+
+  // RFC 6750 section 3: no error code when no token was sent, otherwise only the fixed code
+  // (invalid_token, or invalid_request for a malformed header), never an error_description.
+  private static String bearerChallenge(AuthenticationException e) {
+    if (e instanceof OAuth2AuthenticationException oauth) {
+      return "Bearer error=\"" + oauth.getError().getErrorCode() + "\"";
+    }
+    return "Bearer";
   }
 
   // Domain format rules, reported like Bean Validation errors. The messages are fixed strings

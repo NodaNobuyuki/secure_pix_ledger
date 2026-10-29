@@ -15,8 +15,9 @@ with a tamper-evident audit trail, fraud detection and observability.
 ## Status
 
 **Phase 1 (financial correctness) is complete.** Phase 2 (identity) is in progress: users can
-register, but no endpoint requires logging in yet, so the API has **no authentication** and
-should run only on your own machine. See the [roadmap](#roadmap) and
+register and log in, and every account and transfer endpoint requires an access token. Accounts
+have **no owners yet**, so any logged-in user can use any account: run it only on your own
+machine. See the [roadmap](#roadmap) and
 the [known limitations](#known-limitations).
 
 ## What the ledger guarantees
@@ -62,6 +63,10 @@ amounts anywhere, including the JSON parser, which rejects `25.5`.
 | `POST` | `/transfers` | `201` completed, or `422` rejected; requires an `Idempotency-Key` header |
 | `GET` | `/transfers/{id}` | `200`: a stored transfer |
 | `POST` | `/auth/register` | `201`: registers a customer; `409` if the username is taken |
+| `POST` | `/auth/login` | `200`: a 10-minute access token; `401` for any wrong credentials |
+
+Every endpoint except register, login and the docs needs `Authorization: Bearer <accessToken>`;
+without a valid token the answer is `401` ([ADR-0014](docs/adr/0014-jwt-access-tokens.md)).
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problems
 (`application/problem+json`), documented in [docs/problems.md](docs/problems.md). Unknown JSON
@@ -72,17 +77,25 @@ Swagger UI at `/swagger-ui`.
 ## Try it
 
 The `dev` profile seeds two demo accounts with fixed ids. The variable below overrides `.env`
-for this one command; the stack never seeds unless you ask for it.
+for this one command; the stack never seeds unless you ask for it. The commands need `curl` and
+`jq`.
 
 ```bash
 cp .env.example .env                                  # then replace every "change-me" value
 ops/scripts/generate-jwt-keys.sh                      # access token signing keys (once)
 SPRING_PROFILES_ACTIVE=dev docker compose up -d --build
 
+# Register once (later runs answer 409: the user exists), then log in. The token lasts 10 minutes.
+LOGIN='{"username":"demo","password":"correct horse battery"}'
+curl -s http://localhost:8080/auth/register -H 'Content-Type: application/json' -d "$LOGIN"
+TOKEN=$(curl -s http://localhost:8080/auth/login -H 'Content-Type: application/json' \
+  -d "$LOGIN" | jq -r .accessToken)
+AUTH="Authorization: Bearer $TOKEN"
+
 A=d0000000-0000-4000-8000-000000000001                # seeded with R$1,000.00
 B=d0000000-0000-4000-8000-000000000002                # seeded with R$50.00
 transfer() { # transfer <idempotency-key> <from> <to> <amount in centavos>
-  curl -si http://localhost:8080/transfers \
+  curl -si http://localhost:8080/transfers -H "$AUTH" \
     -H 'Content-Type: application/json' -H "Idempotency-Key: $1" \
     -d "{\"sourceAccountId\":\"$2\",\"destinationAccountId\":\"$3\",\"amountMinor\":$4,\"currency\":\"BRL\"}"
 }
@@ -95,8 +108,9 @@ transfer() { # transfer <idempotency-key> <from> <to> <amount in centavos>
 | `transfer $K1 $A $B 9900` | `422` `idempotency-key-reused` |
 | `K2=$(uuidgen); transfer $K2 $B $A 1000000` | `422` `transfer-rejected`, reason `INSUFFICIENT_FUNDS` |
 | `transfer $K2 $B $A 1000000` | the same `422`, with `Idempotent-Replayed: true` |
-| `curl -s http://localhost:8080/accounts/$A` | balance `97500`; `$B` has `7500` |
-| `curl -si http://localhost:8080/accounts/00000000-0000-0000-0000-000000000001` | `404`, like any unknown account: this is the internal funding account |
+| `curl -s -H "$AUTH" http://localhost:8080/accounts/$A` | balance `97500`; `$B` has `7500` |
+| `curl -si -H "$AUTH" http://localhost:8080/accounts/00000000-0000-0000-0000-000000000001` | `404`, like any unknown account: this is the internal funding account |
+| `curl -si http://localhost:8080/accounts/$A` | `401` with `WWW-Authenticate: Bearer`: no token |
 
 Restarting the app does not fund the accounts again: each seed deposit has a fixed idempotency
 key, so later runs replay it.
@@ -205,11 +219,14 @@ Each phase has a Definition of Done and starts only after the previous one passe
 
 ## Known limitations
 
-These are deliberate at the end of Phase 1:
+These are deliberate at this point of Phase 2:
 
-- **No authentication or authorization.** Anyone who can reach the API can open accounts and move
-  money between any two accounts. Phase 2 adds owners and ownership checks on every query.
-- **Swagger UI is public.** Phase 2 decides whether it stays public once authentication exists.
+- **No ownership checks yet.** Every call needs an access token, but accounts have no owners, so
+  any logged-in user can read any account and move money out of it. The next Phase 2 step adds
+  owners and an ownership check on every query.
+- **No logout or refresh yet.** An access token lasts 10 minutes and cannot be revoked; after
+  that, log in again. Refresh tokens and logout come later in Phase 2.
+- **Swagger UI is public**, without a token. A later Phase 2 step limits it to the `dev` profile.
 - **Money enters only through the `dev` seeder.** There is no public deposit endpoint, by design
   ([ADR-0010](docs/adr/0010-internal-accounts-hidden-from-public-use-cases.md)).
 - **No statements.** Deposits into an account are not visible through `GET /transfers/{id}`, and
