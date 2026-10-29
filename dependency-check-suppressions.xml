@@ -4,4 +4,21 @@
   why it does not apply (or the accepted risk), and an `until` date so it is re-reviewed.
 -->
 <suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+  <!-- Matches only the exact bundled version, so any other DOMPurify build is scanned again. -->
+  <suppress until="2026-11-28Z">
+    <notes><![CDATA[
+      CVE-2026-109344, -109345, -116802, -116803, -116804: DOMPurify 3.4.13 inside the swagger-ui
+      5.32.14 webjar (from springdoc 3.1.1). Fixed in DOMPurify 3.4.17; the newest webjar (5.34.0)
+      still bundles 3.4.16, so no upgrade or override is available yet (ADR-0004).
+      Not reachable as Swagger UI uses DOMPurify: its only sanitize() call takes a string, without
+      IN_PLACE, SAFE_FOR_TEMPLATES, PARSER_MEDIA_TYPE or RETURN_DOM, and its only hook adds
+      rel="noopener" without removing nodes. The input is our own OpenAPI document.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:javascript/DOMPurify@3\.4\.13$</packageUrl>
+    <cve>CVE-2026-109344</cve>
+    <cve>CVE-2026-109345</cve>
+    <cve>CVE-2026-116802</cve>
+    <cve>CVE-2026-116803</cve>
+    <cve>CVE-2026-116804</cve>
+  </suppress>
 </suppressions>
