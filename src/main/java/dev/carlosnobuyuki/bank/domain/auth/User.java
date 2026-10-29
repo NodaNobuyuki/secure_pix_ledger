@@ -27,6 +27,11 @@ public final class User {
     return new User(id, username, passwordHash, Role.CUSTOMER, now);
   }
 
+  public static User restore(
+      UUID id, Username username, PasswordHash passwordHash, Role role, Instant createdAt) {
+    return new User(id, username, passwordHash, role, createdAt);
+  }
+
   public UUID id() {
     return id;
   }

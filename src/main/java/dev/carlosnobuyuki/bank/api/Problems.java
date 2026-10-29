@@ -17,6 +17,7 @@ final class Problems {
   static final URI INVALID_TRANSFER = URI.create(BASE + "invalid-transfer");
   static final URI ACCOUNT_BUSY = URI.create(BASE + "account-busy");
   static final URI USERNAME_TAKEN = URI.create(BASE + "username-taken");
+  static final URI INVALID_CREDENTIALS = URI.create(BASE + "invalid-credentials");
 
   private Problems() {}
 

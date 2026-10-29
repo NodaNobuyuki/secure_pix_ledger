@@ -2,6 +2,7 @@ package dev.carlosnobuyuki.bank.api;
 
 import dev.carlosnobuyuki.bank.application.AccountNotFoundException;
 import dev.carlosnobuyuki.bank.application.IdempotencyKeyReusedException;
+import dev.carlosnobuyuki.bank.application.auth.InvalidCredentialsException;
 import dev.carlosnobuyuki.bank.application.auth.UsernameTakenException;
 import dev.carlosnobuyuki.bank.domain.InvalidTransferException;
 import dev.carlosnobuyuki.bank.domain.auth.InvalidPasswordException;
@@ -87,6 +88,21 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         Problems.USERNAME_TAKEN,
         "Username taken",
         "This username is already registered.");
+  }
+
+  // RFC 9110 requires a challenge on every 401. Plain "Bearer" names the scheme the API uses
+  // without hinting at which credential was wrong (ADR-0014).
+  @ExceptionHandler
+  ResponseEntity<ProblemDetail> invalidCredentials(InvalidCredentialsException e) {
+    ProblemDetail problem =
+        Problems.of(
+            HttpStatus.UNAUTHORIZED,
+            Problems.INVALID_CREDENTIALS,
+            "Invalid credentials",
+            "The username or password is incorrect.");
+    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+        .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
+        .body(problem);
   }
 
   // Domain format rules, reported like Bean Validation errors. The messages are fixed strings

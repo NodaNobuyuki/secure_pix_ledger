@@ -1,7 +1,9 @@
 package dev.carlosnobuyuki.bank.infrastructure.persistence;
 
+import dev.carlosnobuyuki.bank.domain.auth.PasswordHash;
 import dev.carlosnobuyuki.bank.domain.auth.Role;
 import dev.carlosnobuyuki.bank.domain.auth.User;
+import dev.carlosnobuyuki.bank.domain.auth.Username;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -44,5 +46,10 @@ class UserEntity {
     entity.role = user.role();
     entity.createdAt = user.createdAt();
     return entity;
+  }
+
+  User toDomain() {
+    return User.restore(
+        id, new Username(username), new PasswordHash(passwordHash), role, createdAt);
   }
 }

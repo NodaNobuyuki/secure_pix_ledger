@@ -7,4 +7,7 @@ import dev.carlosnobuyuki.bank.domain.auth.PasswordHash;
 public interface PasswordHasher {
 
   PasswordHash hash(Password password);
+
+  /** Hashes the password with the salt and parameters stored in {@code hash} and compares. */
+  boolean matches(Password password, PasswordHash hash);
 }

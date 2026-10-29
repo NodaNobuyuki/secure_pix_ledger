@@ -4,15 +4,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.jayway.jsonpath.JsonPath;
 import dev.carlosnobuyuki.bank.IntegrationTest;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
@@ -24,6 +28,7 @@ class AuthApiTests {
 
   @Autowired MockMvcTester mvc;
   @Autowired JdbcTemplate jdbc;
+  @Autowired JwtDecoder decoder;
 
   @Test
   void registersACustomerWithAnArgon2idHash() throws Exception {
@@ -122,6 +127,86 @@ class AuthApiTests {
             jdbc.queryForObject(
                 "SELECT count(*) FROM users WHERE username = ?", Integer.class, username))
         .isZero();
+  }
+
+  @Test
+  void loginReturnsAnAccessTokenForTheUser() throws Exception {
+    String username = uniqueUsername();
+    String id =
+        JsonPath.read(register(username, PASSWORD).getResponse().getContentAsString(), "$.id");
+
+    MvcTestResult result = login(username.toUpperCase(Locale.ROOT), PASSWORD);
+
+    assertThat(result).hasStatus(HttpStatus.OK);
+    assertThat(result).bodyJson().extractingPath("$.tokenType").isEqualTo("Bearer");
+    assertThat(result).bodyJson().extractingPath("$.expiresIn").isEqualTo(600);
+    String token = JsonPath.read(result.getResponse().getContentAsString(), "$.accessToken");
+    Jwt jwt = decoder.decode(token);
+    assertThat(jwt.getSubject()).isEqualTo(id);
+    assertThat(jwt.getClaimAsStringList("roles")).containsExactly("CUSTOMER");
+    // Clients may log tokens, so they name the user by id only (ADR-0014).
+    assertThat(jwt.getClaims().values().toString()).doesNotContain(username);
+  }
+
+  @Test
+  void loginResponseIsNeverCached() {
+    String username = uniqueUsername();
+    register(username, PASSWORD);
+
+    assertThat(login(username, PASSWORD))
+        .hasStatus(HttpStatus.OK)
+        .headers()
+        .hasValue(HttpHeaders.CACHE_CONTROL, "no-store");
+  }
+
+  @Test
+  void everyLoginFailureGetsTheSameAnswer() throws Exception {
+    String username = uniqueUsername();
+    register(username, PASSWORD);
+
+    // Wrong password, unknown user, and input that could never have been registered.
+    List<MvcTestResult> failures =
+        List.of(
+            login(username, "wrong horse battery"),
+            login(uniqueUsername(), PASSWORD),
+            login("<script>", PASSWORD),
+            login(username, "short"));
+
+    String expected = failures.getFirst().getResponse().getContentAsString();
+    for (MvcTestResult failure : failures) {
+      assertThat(failure)
+          .hasStatus(HttpStatus.UNAUTHORIZED)
+          .hasContentType(MediaType.APPLICATION_PROBLEM_JSON);
+      assertThat(failure).headers().hasValue(HttpHeaders.WWW_AUTHENTICATE, "Bearer");
+      assertThat(failure.getResponse().getContentAsString()).isEqualTo(expected);
+    }
+    assertThat(failures.getFirst())
+        .bodyJson()
+        .extractingPath("$.type")
+        .asString()
+        .endsWith("#invalid-credentials");
+    assertThat(expected).doesNotContain(username, "script", "short", "horse");
+  }
+
+  @Test
+  void loginWithoutAPasswordIs400() {
+    MvcTestResult result =
+        mvc.post()
+            .uri("/auth/login")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"username\":\"" + uniqueUsername() + "\"}")
+            .exchange();
+
+    assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
+    assertThat(result).bodyJson().extractingPath("$.errors[0].field").isEqualTo("password");
+  }
+
+  private MvcTestResult login(String username, String password) {
+    return mvc.post()
+        .uri("/auth/login")
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"username\":\"%s\",\"password\":\"%s\"}".formatted(username, password))
+        .exchange();
   }
 
   private MvcTestResult register(String username, String password) {

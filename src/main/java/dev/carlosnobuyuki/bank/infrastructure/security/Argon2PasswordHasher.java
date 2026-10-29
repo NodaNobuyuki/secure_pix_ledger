@@ -40,4 +40,9 @@ class Argon2PasswordHasher implements PasswordHasher {
     // encode() may return null only for a null input, which Password rules out.
     return new PasswordHash(Objects.requireNonNull(encoder.encode(password.value()), "hash"));
   }
+
+  @Override
+  public boolean matches(Password password, PasswordHash hash) {
+    return encoder.matches(password.value(), hash.encoded());
+  }
 }

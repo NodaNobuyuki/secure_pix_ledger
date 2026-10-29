@@ -3,6 +3,7 @@ package dev.carlosnobuyuki.bank.infrastructure.security;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.carlosnobuyuki.bank.domain.auth.Password;
+import dev.carlosnobuyuki.bank.domain.auth.PasswordHash;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
 
@@ -25,6 +26,22 @@ class Argon2PasswordHasherTest {
 
     assertThat(verifier.matches(PASSWORD.value(), encoded)).isTrue();
     assertThat(verifier.matches("correct horse battery stapler", encoded)).isFalse();
+  }
+
+  @Test
+  void matchesOnlyTheSamePassword() {
+    PasswordHash hash = hasher.hash(PASSWORD);
+
+    assertThat(hasher.matches(PASSWORD, hash)).isTrue();
+    assertThat(hasher.matches(new Password("correct horse battery stapler"), hash)).isFalse();
+  }
+
+  @Test
+  void matchingReadsTheParametersFromTheHash() {
+    // A hash made with other settings still verifies, so the parameters can be raised later.
+    String weaker = new Argon2PasswordEncoder(16, 32, 1, 1024, 1).encode(PASSWORD.value());
+
+    assertThat(hasher.matches(PASSWORD, new PasswordHash("{argon2}" + weaker))).isTrue();
   }
 
   @Test

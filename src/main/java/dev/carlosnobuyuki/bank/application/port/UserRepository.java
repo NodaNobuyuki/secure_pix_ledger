@@ -2,6 +2,7 @@ package dev.carlosnobuyuki.bank.application.port;
 
 import dev.carlosnobuyuki.bank.domain.auth.User;
 import dev.carlosnobuyuki.bank.domain.auth.Username;
+import java.util.Optional;
 
 /**
  * Storage for users. Unlike the ledger repositories, each method is atomic on its own: use cases
@@ -18,4 +19,6 @@ public interface UserRepository {
   void add(User user);
 
   boolean existsByUsername(Username username);
+
+  Optional<User> findByUsername(Username username);
 }

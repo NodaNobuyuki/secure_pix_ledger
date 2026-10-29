@@ -4,7 +4,9 @@ import dev.carlosnobuyuki.bank.application.AccountService;
 import dev.carlosnobuyuki.bank.application.DepositService;
 import dev.carlosnobuyuki.bank.application.TransferExecutor;
 import dev.carlosnobuyuki.bank.application.TransferService;
+import dev.carlosnobuyuki.bank.application.auth.LoginService;
 import dev.carlosnobuyuki.bank.application.auth.RegistrationService;
+import dev.carlosnobuyuki.bank.application.port.AccessTokenIssuer;
 import dev.carlosnobuyuki.bank.application.port.AccountRepository;
 import dev.carlosnobuyuki.bank.application.port.PasswordHasher;
 import dev.carlosnobuyuki.bank.application.port.TransferRepository;
@@ -51,5 +53,10 @@ class ApplicationConfig {
   RegistrationService registrationService(
       UserRepository users, PasswordHasher hasher, Clock clock) {
     return new RegistrationService(users, hasher, clock);
+  }
+
+  @Bean
+  LoginService loginService(UserRepository users, PasswordHasher hasher, AccessTokenIssuer tokens) {
+    return new LoginService(users, hasher, tokens);
   }
 }

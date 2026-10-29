@@ -44,6 +44,13 @@ are the same account. Nothing is stored and the key is not consumed.
 transfer for too long. Nothing was executed; retry after the delay **with the same
 `Idempotency-Key`**, which guarantees the transfer happens at most once.
 
+## invalid-credentials
+
+`401`, with `WWW-Authenticate: Bearer`. `POST /auth/login` did not accept the username and
+password. The response is the same whether the username is unknown, the password is wrong, or
+either one could never have been registered, so it cannot be used to find out which usernames
+exist. Check both and try again ([ADR-0014](adr/0014-jwt-access-tokens.md)).
+
 ## username-taken
 
 `409`. `POST /auth/register` asked for a username that is already registered. Usernames are

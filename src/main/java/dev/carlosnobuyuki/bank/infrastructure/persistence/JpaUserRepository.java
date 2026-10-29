@@ -6,6 +6,7 @@ import dev.carlosnobuyuki.bank.domain.auth.User;
 import dev.carlosnobuyuki.bank.domain.auth.Username;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceException;
+import java.util.Optional;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,5 +45,11 @@ class JpaUserRepository implements UserRepository {
   @Transactional(readOnly = true)
   public boolean existsByUsername(Username username) {
     return users.existsByUsername(username.value());
+  }
+
+  @Override
+  @Transactional(readOnly = true)
+  public Optional<User> findByUsername(Username username) {
+    return users.findByUsername(username.value()).map(UserEntity::toDomain);
   }
 }
