@@ -51,11 +51,15 @@ jobs:
           output: sarif-results
 
       # The analyze step only reports; this makes any finding fail the pipeline, as the brief requires.
+      # One exception (ADR-0003): tests build weak RSA keys on purpose to prove we reject them.
       - name: Fail on findings
         run: |
-          count=$(jq '[.runs[].results[]] | length' sarif-results/*.sarif)
-          if [ "$count" -gt 0 ]; then
-            jq -r '.runs[].results[] | "::error file=\(.locations[0].physicalLocation.artifactLocation.uri),line=\(.locations[0].physicalLocation.region.startLine)::\(.ruleId): \(.message.text)"' sarif-results/*.sarif
+          jq -s '[.[].runs[].results[]
+            | select((.ruleId == "java/insufficient-key-size"
+                and (.locations[0].physicalLocation.artifactLocation.uri | startswith("src/test/"))) | not)]' \
+            sarif-results/*.sarif > findings.json
+          if [ "$(jq length findings.json)" -gt 0 ]; then
+            jq -r '.[] | "::error file=\(.locations[0].physicalLocation.artifactLocation.uri),line=\(.locations[0].physicalLocation.region.startLine)::\(.ruleId): \(.message.text)"' findings.json
             exit 1
           fi
           echo "No CodeQL findings."
