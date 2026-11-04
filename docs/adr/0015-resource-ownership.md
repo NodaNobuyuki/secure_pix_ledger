@@ -21,6 +21,11 @@ see `/accounts/{id}`, not who owns the row.
 - Neither column can change: the application role has no `UPDATE` on them
   ([ADR-0012](0012-least-privilege-database-role.md)). That makes an ownership read safe to use
   without a lock.
+- *Note (2026-11-04):* a trigger on `transfers` (`transfers_initiator_owns_source`) also requires
+  `initiated_by` to be the source account's owner, so `NULL` exactly for internal sources. A
+  `CHECK` cannot read another table. It backs up the use-case check below if that is ever wrong,
+  at the cost of one primary-key read per insert. It also means `Internal` transfers can only come
+  from internal accounts; an admin correction between customer accounts would need to revisit it.
 
 **Checks live in the use cases** ([ADR-0001](0001-hexagonal-layout.md))
 - Controllers take the caller's id from the token and pass it in; the application layer never sees
@@ -30,6 +35,9 @@ see `/accounts/{id}`, not who owns the row.
   accounts only, caller must own the source, stored as `initiated_by`) or `Internal` (deposits;
   any account, `NULL`). This replaces the `AccountScope` enum, so a scope can no longer disagree
   with an identity, and a `switch` over it must handle both cases.
+- *Note (2026-11-04):* the `Initiator` is passed next to the transfer command, not inside it.
+  Controllers build commands; `TransferService` always turns the caller into a `Customer`, and only
+  `DepositService` creates `Internal`, so no request can claim to be internal.
 
 **What each caller can do**
 
