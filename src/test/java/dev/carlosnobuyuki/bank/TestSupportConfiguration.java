@@ -2,6 +2,9 @@ package dev.carlosnobuyuki.bank;
 
 import dev.carlosnobuyuki.bank.application.auth.LoginService;
 import dev.carlosnobuyuki.bank.application.auth.RegistrationService;
+import dev.carlosnobuyuki.bank.application.port.PasswordHasher;
+import dev.carlosnobuyuki.bank.application.port.UserRepository;
+import java.time.Clock;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
@@ -18,7 +21,12 @@ public class TestSupportConfiguration {
   }
 
   @Bean
-  AuthFixture authFixture(RegistrationService registration, LoginService login) {
-    return new AuthFixture(registration, login);
+  AuthFixture authFixture(
+      RegistrationService registration,
+      LoginService login,
+      UserRepository users,
+      PasswordHasher hasher,
+      Clock clock) {
+    return new AuthFixture(registration, login, users, hasher, clock);
   }
 }

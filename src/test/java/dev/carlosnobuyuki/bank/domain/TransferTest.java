@@ -15,7 +15,12 @@ class TransferTest {
 
   private static Account account(AccountStatus status, long balanceMinor) {
     return Account.restore(
-        UUID.randomUUID(), AccountType.CUSTOMER, status, Money.brl(balanceMinor), NOW);
+        UUID.randomUUID(),
+        AccountType.CUSTOMER,
+        UUID.randomUUID(),
+        status,
+        Money.brl(balanceMinor),
+        NOW);
   }
 
   private static TransferResult execute(Account source, Account destination, Money amount) {

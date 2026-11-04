@@ -2,6 +2,7 @@ package dev.carlosnobuyuki.bank.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.carlosnobuyuki.bank.AuthFixture;
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.domain.Money;
 import dev.carlosnobuyuki.bank.domain.TransferStatus;
@@ -16,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -31,12 +33,21 @@ class ParallelIdempotencyTests {
   @Autowired TransferService transfers;
   @Autowired DepositService deposits;
   @Autowired AccountService accounts;
+  @Autowired AuthFixture auth;
   @Autowired JdbcTemplate jdbc;
+
+  // Every customer account needs an owner (ADR-0015); one per test is enough here.
+  private UUID owner;
+
+  @BeforeEach
+  void createOwner() {
+    owner = auth.newAccountOwner();
+  }
 
   @Test
   void sameRequestInParallelExecutesOnce() throws Exception {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     TransferCommand command = new TransferCommand(UUID.randomUUID(), a, b, Money.brl(250));
 
     // Same accounts: the row locks queue the requests, and each one behind the winner inserts the
@@ -62,7 +73,9 @@ class ParallelIdempotencyTests {
     List<TransferCommand> commands =
         IntStream.range(0, 20)
             .mapToObj(
-                i -> new TransferCommand(key, funded(1_000), accounts.open().id(), Money.brl(100)))
+                i ->
+                    new TransferCommand(
+                        key, funded(1_000), accounts.open(owner).id(), Money.brl(100)))
             .toList();
 
     List<Attempt> attempts = runAtOnce(commands);
@@ -116,13 +129,13 @@ class ParallelIdempotencyTests {
   }
 
   private UUID funded(long amountMinor) {
-    UUID id = accounts.open().id();
+    UUID id = accounts.open(owner).id();
     deposits.deposit(UUID.randomUUID(), id, Money.brl(amountMinor));
     return id;
   }
 
   private long balance(UUID account) {
-    return accounts.find(account).orElseThrow().balance().amountMinor();
+    return accounts.find(account, owner).orElseThrow().balance().amountMinor();
   }
 
   private long entriesOf(UUID transferId) {

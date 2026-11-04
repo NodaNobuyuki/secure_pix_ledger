@@ -17,7 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * The application's own connection cannot rewrite history, remove the ledger's guards, change an
- * account's type or promote a user, even if the application is compromised (ADR-0012).
+ * account's type or owner, or promote a user, even if the application is compromised (ADR-0012).
  */
 @IntegrationTest
 class LeastPrivilegeTests {
@@ -56,6 +56,7 @@ class LeastPrivilegeTests {
         "UPDATE transfers SET status = 'COMPLETED'",
         "DELETE FROM transfers",
         "UPDATE accounts SET type = 'SYSTEM'",
+        "UPDATE accounts SET owner_id = NULL",
         "DELETE FROM accounts",
         "UPDATE users SET role = 'ADMIN'",
         "UPDATE users SET password_hash = '{noop}x'",

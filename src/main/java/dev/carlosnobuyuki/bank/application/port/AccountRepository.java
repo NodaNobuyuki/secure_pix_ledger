@@ -13,6 +13,9 @@ public interface AccountRepository {
   /** Plain read, no lock. Never use the result to change a balance. */
   Optional<Account> findById(UUID id);
 
+  /** Plain read, no lock: the user's accounts, oldest first. */
+  List<Account> findByOwner(UUID ownerId);
+
   /**
    * Locks the given accounts for update in ascending id order (ADR-0007) and returns those that
    * exist, in that order. Missing ids are simply absent from the result.

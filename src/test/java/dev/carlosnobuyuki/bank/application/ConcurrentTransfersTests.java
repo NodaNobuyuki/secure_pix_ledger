@@ -2,6 +2,7 @@ package dev.carlosnobuyuki.bank.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import dev.carlosnobuyuki.bank.AuthFixture;
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.domain.Money;
 import dev.carlosnobuyuki.bank.domain.RejectionReason;
@@ -21,6 +22,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -41,7 +43,16 @@ class ConcurrentTransfersTests {
   @Autowired TransferService transfers;
   @Autowired DepositService deposits;
   @Autowired AccountService accounts;
+  @Autowired AuthFixture auth;
   @Autowired JdbcTemplate jdbc;
+
+  // Every customer account needs an owner (ADR-0015); one per test is enough here.
+  private UUID owner;
+
+  @BeforeEach
+  void createOwner() {
+    owner = auth.newAccountOwner();
+  }
 
   @Test
   void keepsBooksConsistentUnderContention() throws Exception {
@@ -147,13 +158,13 @@ class ConcurrentTransfersTests {
   }
 
   private UUID funded() {
-    UUID id = accounts.open().id();
+    UUID id = accounts.open(owner).id();
     deposits.deposit(UUID.randomUUID(), id, Money.brl(INITIAL_BALANCE));
     return id;
   }
 
   private long balance(UUID account) {
-    return accounts.find(account).orElseThrow().balance().amountMinor();
+    return accounts.find(account, owner).orElseThrow().balance().amountMinor();
   }
 
   private long entriesOn(UUID account) {

@@ -3,6 +3,7 @@ package dev.carlosnobuyuki.bank.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.carlosnobuyuki.bank.AuthFixture;
+import dev.carlosnobuyuki.bank.AuthFixture.LoggedIn;
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.application.AccountService;
 import dev.carlosnobuyuki.bank.application.DepositService;
@@ -34,16 +35,20 @@ class TransferApiTests {
 
   // Value of the Authorization header; every endpoint here needs a logged-in user (ADR-0014).
   private String bearer;
+  // The logged-in user, who owns the accounts the tests open (ADR-0015).
+  private UUID owner;
 
   @BeforeEach
   void logIn() {
-    bearer = auth.newCustomer().authorization();
+    LoggedIn me = auth.newCustomer();
+    bearer = me.authorization();
+    owner = me.id();
   }
 
   @Test
   void completedTransferIs201WithLocation() {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
 
     MvcTestResult result = post(UUID.randomUUID(), body(a, b, 300));
 
@@ -63,7 +68,7 @@ class TransferApiTests {
   @Test
   void replayReturnsSameStatusAndBodyWithHeader() throws Exception {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     UUID key = UUID.randomUUID();
 
     MvcTestResult first = post(key, body(a, b, 300));
@@ -80,8 +85,8 @@ class TransferApiTests {
 
   @Test
   void rejectionIs422ProblemAndReplaysTheSame() throws Exception {
-    UUID a = accounts.open().id();
-    UUID b = accounts.open().id();
+    UUID a = accounts.open(owner).id();
+    UUID b = accounts.open(owner).id();
     UUID key = UUID.randomUUID();
 
     MvcTestResult first = post(key, body(a, b, 1));
@@ -112,7 +117,7 @@ class TransferApiTests {
   @Test
   void keyReusedWithDifferentBodyIs422() {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     UUID key = UUID.randomUUID();
     post(key, body(a, b, 100));
 
@@ -129,7 +134,7 @@ class TransferApiTests {
   @Test
   void missingIdempotencyKeyIs400() {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
 
     assertThat(
             mvc.post()
@@ -236,7 +241,7 @@ class TransferApiTests {
   @Test
   void lockTimeoutIs503WithRetryAfter() throws Exception {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
 
     try (Connection holder = dataSource.getConnection();
         PreparedStatement lock =
@@ -271,7 +276,7 @@ class TransferApiTests {
   }
 
   private UUID funded(long amountMinor) {
-    UUID id = accounts.open().id();
+    UUID id = accounts.open(owner).id();
     deposits.deposit(UUID.randomUUID(), id, Money.brl(amountMinor));
     return id;
   }

@@ -3,6 +3,7 @@ package dev.carlosnobuyuki.bank.infrastructure.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.carlosnobuyuki.bank.AuthFixture;
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.application.port.AccountRepository;
 import dev.carlosnobuyuki.bank.application.port.DuplicateIdempotencyKeyException;
@@ -40,6 +41,7 @@ class JpaRepositoriesTests {
   private static final String HASH = "b".repeat(64);
   private static final String LOCK_NOT_AVAILABLE = "55P03";
 
+  @Autowired AuthFixture auth;
   @Autowired AccountRepository accounts;
   @Autowired TransferRepository transfers;
   @Autowired EntityManager entityManager;
@@ -54,9 +56,33 @@ class JpaRepositoriesTests {
     Account found = accounts.findById(account.id()).orElseThrow();
 
     assertThat(found.type()).isEqualTo(AccountType.CUSTOMER);
+    assertThat(found.ownerId()).isEqualTo(account.ownerId());
     assertThat(found.isActive()).isTrue();
     assertThat(found.balance()).isEqualTo(Money.brl(0));
     assertThat(found.createdAt()).isEqualTo(NOW);
+  }
+
+  @Test
+  void restoresSystemAccountWithoutOwner() {
+    assertThat(accounts.findById(SystemAccounts.FUNDING_ID).orElseThrow().ownerId()).isEmpty();
+  }
+
+  @Test
+  void findsAccountsByOwnerOldestFirst() {
+    UUID owner = auth.newAccountOwner();
+    Account newer = newCustomer(owner, NOW.plusSeconds(1));
+    Account older = newCustomer(owner, NOW);
+    newCustomer();
+    flushAndClear();
+
+    assertThat(accounts.findByOwner(owner))
+        .extracting(Account::id)
+        .containsExactly(older.id(), newer.id());
+  }
+
+  @Test
+  void findByOwnerIsEmptyForUserWithoutAccounts() {
+    assertThat(accounts.findByOwner(auth.newAccountOwner())).isEmpty();
   }
 
   @Test
@@ -178,7 +204,11 @@ class JpaRepositoriesTests {
   }
 
   private Account newCustomer() {
-    Account account = Account.open(UUID.randomUUID(), AccountType.CUSTOMER, Money.BRL, NOW);
+    return newCustomer(auth.newAccountOwner(), NOW);
+  }
+
+  private Account newCustomer(UUID owner, Instant createdAt) {
+    Account account = Account.open(UUID.randomUUID(), owner, Money.BRL, createdAt);
     accounts.add(account);
     return account;
   }

@@ -3,6 +3,7 @@ package dev.carlosnobuyuki.bank.api;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.carlosnobuyuki.bank.AuthFixture;
+import dev.carlosnobuyuki.bank.AuthFixture.LoggedIn;
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.MutableClock;
 import dev.carlosnobuyuki.bank.TestJwtKeys;
@@ -55,10 +56,14 @@ class SecurityApiTests {
   String audience;
 
   private String bearer;
+  // Hand-made tokens name this real user: opening an account stores the subject as its owner.
+  private UUID userId;
 
   @BeforeEach
   void logIn() {
-    bearer = auth.newCustomer().authorization();
+    LoggedIn me = auth.newCustomer();
+    bearer = me.authorization();
+    userId = me.id();
   }
 
   @Test
@@ -92,6 +97,31 @@ class SecurityApiTests {
     // Baseline for the cases below: each one changes exactly one thing in this token.
     assertThat(openAccount("Bearer " + signed(claims -> claims, "at+jwt")))
         .hasStatus(HttpStatus.CREATED);
+  }
+
+  @Test
+  void adminCannotUseCustomerEndpoints() {
+    String admin = auth.newAdmin().authorization();
+
+    for (MvcTestResult result :
+        List.of(
+            openAccount(admin),
+            mvc.get().uri("/accounts").header(HttpHeaders.AUTHORIZATION, admin).exchange(),
+            mvc.get()
+                .uri("/transfers/{id}", UUID.randomUUID())
+                .header(HttpHeaders.AUTHORIZATION, admin)
+                .exchange())) {
+      assertThat(result)
+          .hasStatus(HttpStatus.FORBIDDEN)
+          .hasContentType(MediaType.APPLICATION_PROBLEM_JSON);
+    }
+  }
+
+  @Test
+  void aValidTokenWithoutTheCustomerRoleIs403() {
+    String noRoles = "Bearer " + signed(claims -> claims.claim("roles", List.of()), "at+jwt");
+
+    assertThat(openAccount(noRoles)).hasStatus(HttpStatus.FORBIDDEN);
   }
 
   @Test
@@ -192,7 +222,7 @@ class SecurityApiTests {
         JwtClaimsSet.builder()
             .issuer(issuer)
             .audience(List.of(audience))
-            .subject(UUID.randomUUID().toString())
+            .subject(userId.toString())
             .claim("roles", List.of("CUSTOMER"))
             .issuedAt(now)
             .expiresAt(now.plus(Duration.ofMinutes(10)));

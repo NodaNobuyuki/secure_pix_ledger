@@ -92,14 +92,34 @@ class SchemaConstraintsTests {
 
   @Test
   void rejectsUnknownAccountStatus() {
-    assertThatThrownBy(
-            () ->
-                jdbc.update(
-                    "INSERT INTO accounts (id, type, status, currency, balance_minor)"
-                        + " VALUES (?, 'CUSTOMER', 'FROZEN', 'BRL', 0)",
-                    UUID.randomUUID()))
+    UUID owner = insertUser();
+
+    assertThatThrownBy(() -> insertAccount("CUSTOMER", "FROZEN", owner, 0))
         .isInstanceOf(DataIntegrityViolationException.class)
         .hasMessageContaining("accounts_status_valid");
+  }
+
+  @Test
+  void rejectsCustomerAccountWithoutOwner() {
+    assertThatThrownBy(() -> insertAccount("CUSTOMER", "ACTIVE", null, 0))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("accounts_owner_iff_customer");
+  }
+
+  @Test
+  void rejectsSystemAccountWithOwner() {
+    UUID owner = insertUser();
+
+    assertThatThrownBy(() -> insertAccount("SYSTEM", "ACTIVE", owner, 0))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("accounts_owner_iff_customer");
+  }
+
+  @Test
+  void rejectsOwnerThatIsNotAUser() {
+    assertThatThrownBy(() -> insertAccount("CUSTOMER", "ACTIVE", UUID.randomUUID(), 0))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("accounts_owner_fk");
   }
 
   @Test
@@ -223,23 +243,37 @@ class SchemaConstraintsTests {
         .hasMessageContaining("users_password_hash_encoded");
   }
 
-  private void insertUser(String username, String role, String passwordHash) {
+  private UUID insertUser(String username, String role, String passwordHash) {
+    UUID id = UUID.randomUUID();
     jdbc.update(
         "INSERT INTO users (id, username, password_hash, role) VALUES (?, ?, ?, ?)",
-        UUID.randomUUID(),
+        id,
         username,
         passwordHash,
         role);
+    return id;
+  }
+
+  private UUID insertUser() {
+    return insertUser(
+        "schema-" + UUID.randomUUID().toString().substring(0, 8), "CUSTOMER", ENCODED_HASH);
   }
 
   private UUID insertAccount(String type, long balanceMinor) {
+    return insertAccount(
+        type, "ACTIVE", type.equals("CUSTOMER") ? insertUser() : null, balanceMinor);
+  }
+
+  private UUID insertAccount(String type, String status, UUID ownerId, long balanceMinor) {
     UUID id = UUID.randomUUID();
     jdbc.update(
-        "INSERT INTO accounts (id, type, status, currency, balance_minor)"
-            + " VALUES (?, ?, 'ACTIVE', 'BRL', ?)",
+        "INSERT INTO accounts (id, type, status, currency, balance_minor, owner_id)"
+            + " VALUES (?, ?, ?, 'BRL', ?, ?)",
         id,
         type,
-        balanceMinor);
+        status,
+        balanceMinor,
+        ownerId);
     return id;
   }
 

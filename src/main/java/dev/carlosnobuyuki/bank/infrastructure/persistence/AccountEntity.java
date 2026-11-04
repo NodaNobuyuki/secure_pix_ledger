@@ -26,6 +26,11 @@ class AccountEntity {
   @Column(nullable = false, updatable = false)
   private AccountType type;
 
+  // Never updatable: ownership is fixed for life, and the application role has no UPDATE grant on
+  // it (ADR-0015).
+  @Column(name = "owner_id", updatable = false)
+  private UUID ownerId;
+
   @Enumerated(EnumType.STRING)
   @Column(nullable = false)
   private AccountStatus status;
@@ -49,6 +54,7 @@ class AccountEntity {
     AccountEntity entity = new AccountEntity();
     entity.id = account.id();
     entity.type = account.type();
+    entity.ownerId = account.ownerId().orElse(null);
     entity.status = account.status();
     entity.currency = account.balance().currency().getCurrencyCode();
     entity.balanceMinor = account.balance().amountMinor();
@@ -58,7 +64,12 @@ class AccountEntity {
 
   Account toDomain() {
     return Account.restore(
-        id, type, status, new Money(balanceMinor, Currency.getInstance(currency)), createdAt);
+        id,
+        type,
+        ownerId,
+        status,
+        new Money(balanceMinor, Currency.getInstance(currency)),
+        createdAt);
   }
 
   UUID id() {

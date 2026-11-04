@@ -58,6 +58,8 @@ services:
       # "default" is Spring's name for "no profile". Set SPRING_PROFILES_ACTIVE=dev in .env to
       # seed funded demo accounts; nothing else changes between the two.
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-default}
+      # Password of the dev profile's demo users; the dev profile refuses to start without it.
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:-}
       # Access token signing keys (ADR-0014), mounted from the secrets below.
       JWT_PRIVATE_KEY_PATH: /run/secrets/jwt_private_key
       JWT_PUBLIC_KEY_PATH: /run/secrets/jwt_public_key

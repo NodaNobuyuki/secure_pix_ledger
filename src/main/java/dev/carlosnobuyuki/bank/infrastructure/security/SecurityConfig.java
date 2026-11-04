@@ -2,6 +2,7 @@ package dev.carlosnobuyuki.bank.infrastructure.security;
 
 import static org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher.pathPattern;
 
+import dev.carlosnobuyuki.bank.domain.auth.Role;
 import jakarta.servlet.DispatcherType;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.security.autoconfigure.actuate.web.servlet.EndpointRequest;
@@ -25,7 +26,7 @@ import org.springframework.web.servlet.HandlerExceptionResolver;
 
 /**
  * Who may call what (ADR-0014). Every request needs a valid access token except login, registration
- * and the API docs.
+ * and the API docs; accounts and transfers also need the customer role (ADR-0015).
  */
 @Configuration(proxyBeanMethods = false)
 class SecurityConfig {
@@ -38,6 +39,10 @@ class SecurityConfig {
           // Public until a later Phase 2 step limits the docs to the dev profile.
           pathPattern(HttpMethod.GET, "/v3/api-docs/**"),
           pathPattern(HttpMethod.GET, "/swagger-ui/**"));
+
+  /** Customers' own resources. */
+  static final RequestMatcher CUSTOMER_ONLY =
+      new OrRequestMatcher(pathPattern("/accounts/**"), pathPattern("/transfers/**"));
 
   /**
    * Actuator. With its own port, Boot installs the security filter there too, so without this chain
@@ -80,6 +85,11 @@ class SecurityConfig {
                     .permitAll()
                     .requestMatchers(PUBLIC)
                     .permitAll()
+                    // Money and accounts are customer business. Admins get their own /admin
+                    // use cases instead (ADR-0015); ownership itself is checked in the use cases,
+                    // which see the data. "/**" also matches the bare collection path.
+                    .requestMatchers(CUSTOMER_ONLY)
+                    .hasRole(Role.CUSTOMER.name())
                     .anyRequest()
                     .authenticated())
         .oauth2ResourceServer(

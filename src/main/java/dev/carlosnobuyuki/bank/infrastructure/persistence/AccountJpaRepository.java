@@ -15,4 +15,7 @@ interface AccountJpaRepository extends JpaRepository<AccountEntity, UUID> {
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select a from AccountEntity a where a.id in :ids order by a.id")
   List<AccountEntity> lockAllOrderedById(Collection<UUID> ids);
+
+  // The id breaks ties between accounts opened in the same microsecond, so the order is stable.
+  List<AccountEntity> findByOwnerIdOrderByCreatedAtAscIdAsc(UUID ownerId);
 }

@@ -3,6 +3,7 @@ package dev.carlosnobuyuki.bank.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import dev.carlosnobuyuki.bank.AuthFixture;
 import dev.carlosnobuyuki.bank.IntegrationTest;
 import dev.carlosnobuyuki.bank.domain.InvalidTransferException;
 import dev.carlosnobuyuki.bank.domain.Money;
@@ -16,6 +17,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.PessimisticLockingFailureException;
@@ -31,12 +33,21 @@ class TransferServiceTests {
   @Autowired TransferService transfers;
   @Autowired DepositService deposits;
   @Autowired AccountService accounts;
+  @Autowired AuthFixture auth;
   @Autowired JdbcTemplate jdbc;
   @Autowired DataSource dataSource;
 
+  // Every customer account needs an owner (ADR-0015); one per test is enough here.
+  private UUID owner;
+
+  @BeforeEach
+  void createOwner() {
+    owner = auth.newAccountOwner();
+  }
+
   @Test
   void depositIssuesMoneyFromSystemFunding() {
-    UUID customer = accounts.open().id();
+    UUID customer = accounts.open(owner).id();
     long fundingBefore = rawBalance(SystemAccounts.FUNDING_ID);
 
     TransferOutcome outcome = deposits.deposit(UUID.randomUUID(), customer, Money.brl(10_000));
@@ -50,7 +61,7 @@ class TransferServiceTests {
   @Test
   void transfersBetweenCustomers() {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
 
     TransferOutcome outcome = transfers.transfer(command(a, b, 300));
 
@@ -64,7 +75,7 @@ class TransferServiceTests {
   @Test
   void storesRejectionForInsufficientFundsWithoutMovingMoney() {
     UUID a = funded(100);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
 
     TransferOutcome outcome = transfers.transfer(command(a, b, 101));
 
@@ -78,7 +89,7 @@ class TransferServiceTests {
   @Test
   void storesRejectionForInactiveDestination() {
     UUID a = funded(100);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     jdbc.update("UPDATE accounts SET status = 'INACTIVE' WHERE id = ?", b);
 
     TransferOutcome outcome = transfers.transfer(command(a, b, 50));
@@ -90,7 +101,7 @@ class TransferServiceTests {
   @Test
   void replaysSameRequestWithoutExecutingTwice() {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     TransferCommand command = command(a, b, 400);
 
     TransferOutcome first = transfers.transfer(command);
@@ -106,8 +117,8 @@ class TransferServiceTests {
 
   @Test
   void replaysRejectionEvenAfterFundsArrive() {
-    UUID a = accounts.open().id();
-    UUID b = accounts.open().id();
+    UUID a = accounts.open(owner).id();
+    UUID b = accounts.open(owner).id();
     TransferCommand command = command(a, b, 500);
     transfers.transfer(command);
     deposits.deposit(UUID.randomUUID(), a, Money.brl(1_000));
@@ -123,7 +134,7 @@ class TransferServiceTests {
   @Test
   void refusesKeyReusedForDifferentRequest() {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     UUID key = UUID.randomUUID();
     transfers.transfer(new TransferCommand(key, a, b, Money.brl(100)));
 
@@ -135,7 +146,7 @@ class TransferServiceTests {
   @Test
   void unknownAccountDoesNotConsumeKey() {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     UUID unknown = UUID.randomUUID();
     UUID key = UUID.randomUUID();
 
@@ -152,7 +163,7 @@ class TransferServiceTests {
   @Test
   void currencyMismatchIsInvalidAndNotStored() {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     UUID key = UUID.randomUUID();
 
     assertThatThrownBy(
@@ -166,7 +177,7 @@ class TransferServiceTests {
 
   @Test
   void hidesSystemAccountsFromPublicUseCases() {
-    UUID customer = accounts.open().id();
+    UUID customer = accounts.open(owner).id();
     UUID funding = SystemAccounts.FUNDING_ID;
     UUID depositId = deposits.deposit(UUID.randomUUID(), customer, Money.brl(1)).transfer().id();
     long fundingBefore = rawBalance(funding);
@@ -175,7 +186,7 @@ class TransferServiceTests {
         .isInstanceOf(AccountNotFoundException.class);
     assertThatThrownBy(() -> transfers.transfer(command(customer, funding, 1)))
         .isInstanceOf(AccountNotFoundException.class);
-    assertThat(accounts.find(funding)).isEmpty();
+    assertThat(accounts.find(funding, owner)).isEmpty();
     assertThat(transfers.find(depositId)).isEmpty();
     assertThat(rawBalance(funding)).isEqualTo(fundingBefore);
     assertThat(balance(customer)).isEqualTo(1);
@@ -184,7 +195,7 @@ class TransferServiceTests {
   @Test
   void replaysWinnerWhenLosingTheIdempotencyRace() throws Exception {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
     TransferCommand command = command(a, b, 250);
 
     try (Connection winner = dataSource.getConnection()) {
@@ -209,7 +220,7 @@ class TransferServiceTests {
   @Test
   void failsFastWhenAccountStaysLocked() throws Exception {
     UUID a = funded(1_000);
-    UUID b = accounts.open().id();
+    UUID b = accounts.open(owner).id();
 
     try (Connection holder = dataSource.getConnection();
         PreparedStatement lock =
@@ -234,13 +245,13 @@ class TransferServiceTests {
   }
 
   private UUID funded(long amountMinor) {
-    UUID id = accounts.open().id();
+    UUID id = accounts.open(owner).id();
     deposits.deposit(UUID.randomUUID(), id, Money.brl(amountMinor));
     return id;
   }
 
   private long balance(UUID customer) {
-    return accounts.find(customer).orElseThrow().balance().amountMinor();
+    return accounts.find(customer, owner).orElseThrow().balance().amountMinor();
   }
 
   private long rawBalance(UUID account) {

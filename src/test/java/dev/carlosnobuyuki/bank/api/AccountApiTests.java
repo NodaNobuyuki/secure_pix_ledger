@@ -103,6 +103,56 @@ class AccountApiTests {
   }
 
   @Test
+  void someoneElsesAccountLooksExactlyLikeUnknownAccount() throws Exception {
+    String alicesAccount = openAccount(bearer);
+    String bob = auth.newCustomer().authorization();
+    UUID unknownId = UUID.randomUUID();
+
+    MvcTestResult others =
+        mvc.get()
+            .uri("/accounts/{id}", alicesAccount)
+            .header(HttpHeaders.AUTHORIZATION, bob)
+            .exchange();
+    String unknown =
+        mvc.get()
+            .uri("/accounts/{id}", unknownId)
+            .header(HttpHeaders.AUTHORIZATION, bob)
+            .exchange()
+            .getResponse()
+            .getContentAsString();
+
+    // A 403 would confirm the id exists (ADR-0015).
+    assertThat(others).hasStatus(HttpStatus.NOT_FOUND);
+    assertThat(others.getResponse().getContentAsString().replace(alicesAccount, "ID"))
+        .isEqualTo(unknown.replace(unknownId.toString(), "ID"));
+  }
+
+  @Test
+  void listsOnlyTheCallersAccountsOldestFirst() {
+    String first = openAccount(bearer);
+    String second = openAccount(bearer);
+    openAccount(auth.newCustomer().authorization());
+
+    MvcTestResult result =
+        mvc.get().uri("/accounts").header(HttpHeaders.AUTHORIZATION, bearer).exchange();
+
+    assertThat(result).hasStatusOk();
+    assertThat(result)
+        .bodyJson()
+        .extractingPath("$.accounts[*].id")
+        .asArray()
+        .containsExactly(first, second);
+  }
+
+  @Test
+  void newUserHasNoAccounts() {
+    assertThat(mvc.get().uri("/accounts").header(HttpHeaders.AUTHORIZATION, bearer))
+        .hasStatusOk()
+        .bodyJson()
+        .isLenientlyEqualTo("{\"accounts\":[]}");
+  }
+
+  @Test
   void malformedIdIs400WithoutEchoingInput() {
     MvcTestResult result =
         mvc.get()
@@ -116,5 +166,16 @@ class AccountApiTests {
         .extractingPath("$.detail")
         .asString()
         .doesNotContain("script", "java.");
+  }
+
+  /** Opens an account as the given user and returns its id. */
+  private String openAccount(String authorization) {
+    return mvc.post()
+        .uri("/accounts")
+        .header(HttpHeaders.AUTHORIZATION, authorization)
+        .exchange()
+        .getResponse()
+        .getHeader("Location")
+        .replace("/accounts/", "");
   }
 }
