@@ -5,15 +5,18 @@ Errors are returned as [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) proble
 Clients should match on the full `type` URI; `title` and `detail` are for humans and may change.
 Rationale: [ADR-0011](adr/0011-http-error-contract.md).
 
-Generic errors (`400` validation, `404` unknown transfer or route, `500`) use `about:blank`, whose
-meaning is the HTTP status itself. Validation problems add an `errors` array of
+Generic errors (`400` validation, `403` a token without the needed role, `404` unknown transfer or
+route, `500`) use `about:blank`, whose meaning is the HTTP status itself. A transfer the caller may
+not see gets the same `404` as an unknown one ([ADR-0015](adr/0015-resource-ownership.md)). Validation problems add an `errors` array of
 `{"field", "message"}` objects.
 
 ## account-not-found
 
-`404`. An account in the path or in the request body does not exist. Internal accounts are
-reported the same way. Nothing is stored and the `Idempotency-Key` is **not** consumed, so the
-request can be corrected and resent with the same key.
+`404`. An account in the path or in the request body does not exist. Internal accounts, another
+user's account in the path, and a transfer source the caller does not own are reported the same
+way, so the response never reveals whether an id exists
+([ADR-0015](adr/0015-resource-ownership.md)). Nothing is stored and the `Idempotency-Key` is
+**not** consumed, so the request can be corrected and resent with the same key.
 
 ## transfer-rejected
 

@@ -15,9 +15,9 @@ with a tamper-evident audit trail, fraud detection and observability.
 ## Status
 
 **Phase 1 (financial correctness) is complete.** Phase 2 (identity) is in progress: users can
-register and log in, and every account and transfer endpoint requires an access token. Accounts
-have **no owners yet**, so any logged-in user can use any account: run it only on your own
-machine. See the [roadmap](#roadmap) and
+register and log in, every account and transfer endpoint requires an access token, and each user
+can see and move only their own money. Tokens cannot be revoked and nothing limits login attempts
+yet, so run it only on your own machine. See the [roadmap](#roadmap) and
 the [known limitations](#known-limitations).
 
 ## What the ledger guarantees
@@ -30,7 +30,8 @@ each one has a test that tries to break it.
 | Money is never created or lost | Double-entry ledger: a completed transfer writes a debit and a credit that sum to zero. New money comes only from an internal funding account, whose negative balance is the total issued. ([ADR-0006](docs/adr/0006-double-entry-ledger-and-money.md)) | `LedgerInvariantExtension`, after every integration test |
 | No overdraft, even under concurrency | Both accounts are row-locked before the balance check; a `CHECK` constraint rejects a negative customer balance anyway | `ConcurrentTransfersTests`: 100 × R$5 out of R$100, exactly 20 succeed |
 | No deadlocks | Both rows are locked in one query, in id order ([ADR-0007](docs/adr/0007-pessimistic-locking.md)) | `ConcurrentTransfersTests`: 200 crossed A↔B transfers |
-| A transfer happens at most once per `Idempotency-Key` | Lookup, then a `UNIQUE` constraint; the loser of a race replays the winner ([ADR-0008](docs/adr/0008-idempotency-keys.md)) | `ParallelIdempotencyTests`: 50 identical requests at once, one transfer |
+| A transfer happens at most once per `Idempotency-Key` | Lookup, then a `UNIQUE` constraint on (user, key); the loser of a race replays the winner. Keys are per user, so nobody can replay or block someone else's ([ADR-0008](docs/adr/0008-idempotency-keys.md)) | `ParallelIdempotencyTests`: 50 identical requests at once, one transfer |
+| Only the owner can move an account's money | Ownership is checked before any row lock, and someone else's account answers exactly like a missing one. A trigger rejects a transfer whose initiator does not own the source, whatever the code does ([ADR-0015](docs/adr/0015-resource-ownership.md)) | `TransferApiTests`, `TransferServiceTests`, `SchemaConstraintsTests` |
 | The ledger is append-only | Triggers reject `UPDATE`, `DELETE` and `TRUNCATE` on ledger entries | `SchemaConstraintsTests` |
 | Lock waits are bounded | `lock_timeout` of 3 s; the client gets `503` with `Retry-After` and retries with the same key | `TransferServiceTests`, `TransferApiTests` |
 | Internal accounts are invisible | The funding account answers exactly like an account that does not exist ([ADR-0010](docs/adr/0010-internal-accounts-hidden-from-public-use-cases.md)) | `AccountApiTests`, `TransferApiTests` |
@@ -44,10 +45,12 @@ amounts anywhere, including the JSON parser, which rejects `25.5`.
 
 1. Validate the body and the `Idempotency-Key` header (a UUID). Malformed requests are `400`, and
    the same source and destination is `422`; neither is stored, so the key stays unused.
-2. If the key was already used: same body, replay the stored response with
+2. If the caller already used the key: same body, replay the stored response with
    `Idempotent-Replayed: true`; different body, `422`.
-3. Lock both accounts (`SELECT … FOR NO KEY UPDATE`, ordered by id). An unknown account is `404`,
-   also without consuming the key.
+3. Check that the caller owns the source account, then lock both accounts
+   (`SELECT … FOR NO KEY UPDATE`, ordered by id). An unknown account, or a source the caller does
+   not own, is `404`, also without consuming the key. Checking first means a stranger cannot even
+   make the owner's transfers wait for a lock.
 4. Apply the business rules (funds, active accounts). A refusal is **stored** as `REJECTED` and
    returned as `422`, so a retry replays the same refusal instead of re-evaluating it.
 5. Insert the transfer and its two ledger entries, update both balances, commit.
@@ -58,15 +61,20 @@ amounts anywhere, including the JSON parser, which rejects `25.5`.
 
 | Method | Path | Result |
 |---|---|---|
-| `POST` | `/accounts` | `201`: opens a BRL account with a zero balance |
-| `GET` | `/accounts/{id}` | `200`: status and balance |
-| `POST` | `/transfers` | `201` completed, or `422` rejected; requires an `Idempotency-Key` header |
-| `GET` | `/transfers/{id}` | `200`: a stored transfer |
+| `POST` | `/accounts` | `201`: opens a BRL account with a zero balance, owned by the caller |
+| `GET` | `/accounts` | `200`: the caller's accounts, oldest first |
+| `GET` | `/accounts/{id}` | `200`: status and balance of one of the caller's accounts |
+| `POST` | `/transfers` | `201` completed, or `422` rejected; requires an `Idempotency-Key` header. The source must be the caller's; the destination can be anyone's |
+| `GET` | `/transfers/{id}` | `200`: a transfer the caller sent, or a completed one they received |
 | `POST` | `/auth/register` | `201`: registers a customer; `409` if the username is taken |
 | `POST` | `/auth/login` | `200`: a 10-minute access token; `401` for any wrong credentials |
 
 Every endpoint except register, login and the docs needs `Authorization: Bearer <accessToken>`;
 without a valid token the answer is `401` ([ADR-0014](docs/adr/0014-jwt-access-tokens.md)).
+Accounts and transfers are for customers: a token without the customer role gets `403`. The
+caller is always the token's subject, never an id from the request, and someone else's account or
+transfer gets the same `404` as one that does not exist, so ids cannot be probed
+([ADR-0015](docs/adr/0015-resource-ownership.md)).
 
 Errors are [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problems
 (`application/problem+json`), documented in [docs/problems.md](docs/problems.md). Unknown JSON
@@ -76,44 +84,53 @@ Swagger UI at `/swagger-ui`.
 
 ## Try it
 
-The `dev` profile seeds two demo accounts with fixed ids. The variable below overrides `.env`
-for this one command; the stack never seeds unless you ask for it. The commands need `curl` and
-`jq`.
+The `dev` profile seeds two demo users, `alice` and `bob`, each owning one funded account with a
+fixed id. Both get the password in `DEMO_USER_PASSWORD`; the dev profile refuses to start without
+one. The variables below override `.env` for this shell; the stack never seeds unless you ask for
+it. The commands need `curl`, `jq` and `openssl`.
 
 ```bash
 cp .env.example .env                                  # then replace every "change-me" value
 ops/scripts/generate-jwt-keys.sh                      # access token signing keys (once)
+export DEMO_USER_PASSWORD=$(openssl rand -base64 18)  # synthetic; the demo users get it
 SPRING_PROFILES_ACTIVE=dev docker compose up -d --build
 
-# Register once (later runs answer 409: the user exists), then log in. The token lasts 10 minutes.
-LOGIN='{"username":"demo","password":"correct horse battery"}'
-curl -s http://localhost:8080/auth/register -H 'Content-Type: application/json' -d "$LOGIN"
-TOKEN=$(curl -s http://localhost:8080/auth/login -H 'Content-Type: application/json' \
-  -d "$LOGIN" | jq -r .accessToken)
-AUTH="Authorization: Bearer $TOKEN"
+login() { # login <username>: prints an Authorization header; the token lasts 10 minutes
+  printf 'Authorization: Bearer %s' "$(jq -n --arg u "$1" --arg p "$DEMO_USER_PASSWORD" \
+    '{username: $u, password: $p}' | curl -s http://localhost:8080/auth/login \
+    -H 'Content-Type: application/json' -d @- | jq -r .accessToken)"
+}
+ALICE=$(login alice)
+BOB=$(login bob)
 
-A=d0000000-0000-4000-8000-000000000001                # seeded with R$1,000.00
-B=d0000000-0000-4000-8000-000000000002                # seeded with R$50.00
-transfer() { # transfer <idempotency-key> <from> <to> <amount in centavos>
-  curl -si http://localhost:8080/transfers -H "$AUTH" \
-    -H 'Content-Type: application/json' -H "Idempotency-Key: $1" \
-    -d "{\"sourceAccountId\":\"$2\",\"destinationAccountId\":\"$3\",\"amountMinor\":$4,\"currency\":\"BRL\"}"
+A=d0000000-0000-4000-8000-000000000001                # alice's, seeded with R$1,000.00
+B=d0000000-0000-4000-8000-000000000002                # bob's, seeded with R$50.00
+transfer() { # transfer <auth header> <idempotency-key> <from> <to> <amount in centavos>
+  curl -si http://localhost:8080/transfers -H "$1" \
+    -H 'Content-Type: application/json' -H "Idempotency-Key: $2" \
+    -d "{\"sourceAccountId\":\"$3\",\"destinationAccountId\":\"$4\",\"amountMinor\":$5,\"currency\":\"BRL\"}"
 }
 ```
 
+On a fresh database:
+
 | Command | Response |
 |---|---|
-| `K1=$(uuidgen); transfer $K1 $A $B 2500` | `201`, `Location: /transfers/{id}`, status `COMPLETED` |
-| `transfer $K1 $A $B 2500` (a client retry) | `201` with `Idempotent-Replayed: true` and the same transfer; no money moves |
-| `transfer $K1 $A $B 9900` | `422` `idempotency-key-reused` |
-| `K2=$(uuidgen); transfer $K2 $B $A 1000000` | `422` `transfer-rejected`, reason `INSUFFICIENT_FUNDS` |
-| `transfer $K2 $B $A 1000000` | the same `422`, with `Idempotent-Replayed: true` |
-| `curl -s -H "$AUTH" http://localhost:8080/accounts/$A` | balance `97500`; `$B` has `7500` |
-| `curl -si -H "$AUTH" http://localhost:8080/accounts/00000000-0000-0000-0000-000000000001` | `404`, like any unknown account: this is the internal funding account |
+| `K1=$(uuidgen); transfer "$ALICE" $K1 $A $B 2500` | `201`, `Location: /transfers/{id}`, status `COMPLETED` |
+| `transfer "$ALICE" $K1 $A $B 2500` (a client retry) | `201` with `Idempotent-Replayed: true` and the same transfer; no money moves |
+| `transfer "$ALICE" $K1 $A $B 9900` | `422` `idempotency-key-reused` |
+| `K2=$(uuidgen); transfer "$BOB" $K2 $B $A 1000000` | `422` `transfer-rejected`, reason `INSUFFICIENT_FUNDS` |
+| `transfer "$BOB" $K2 $B $A 1000000` | the same `422`, with `Idempotent-Replayed: true` |
+| `transfer "$BOB" $K1 $B $A 100` | `201`, a new transfer: keys are per user, so alice's key neither replays nor blocks bob's |
+| `curl -si -H "$BOB" http://localhost:8080/accounts/$A` | `404` `account-not-found`: alice's account looks exactly like one that does not exist |
+| `transfer "$BOB" $(uuidgen) $A $B 2500` | the same `404`: bob cannot move alice's money, and the key stays unused |
+| `curl -s -H "$ALICE" http://localhost:8080/accounts` | only alice's account, balance `97600`; bob's lists `$B` with `7400` |
+| `curl -si -H "$ALICE" http://localhost:8080/accounts/00000000-0000-0000-0000-000000000001` | `404`, like any unknown account: this is the internal funding account |
 | `curl -si http://localhost:8080/accounts/$A` | `401` with `WWW-Authenticate: Bearer`: no token |
 
 Restarting the app does not fund the accounts again: each seed deposit has a fixed idempotency
-key, so later runs replay it.
+key, so later runs replay it. The demo users keep the password they were created with, so in a
+new shell set the same `DEMO_USER_PASSWORD` again, or start over with `docker compose down -v`.
 
 ## Running locally
 
@@ -147,7 +164,8 @@ credentials. The API connects as `APP_DB_USER`, a role that can only read and wr
 no `DELETE`, no way to disable the ledger triggers
 ([ADR-0012](docs/adr/0012-least-privilege-database-role.md)). That role is created when the
 database volume is first initialized, so a volume from before it existed needs one
-`docker compose down -v`.
+`docker compose down -v`. The same goes for a volume holding accounts or transfers from before
+accounts had owners: the ownership migrations refuse to guess an owner and ask for the reset.
 
 Other useful commands:
 
@@ -168,14 +186,15 @@ every balance equals the sum of its account's entries.
 |---|---|
 | `domain/*Test` | Money arithmetic and overflow, transfer and account rules (plain unit tests, no Spring) |
 | `SchemaConstraintsTests` | The database alone rejects invalid states, bypassing the domain model, even for the schema owner |
-| `LeastPrivilegeTests` | The app's database role cannot delete, truncate, alter tables or disable the ledger triggers |
+| `LeastPrivilegeTests` | The app's database role cannot delete, truncate, alter tables, disable the ledger or ownership triggers, or change who owns an account or sent a transfer |
+| `OwnershipMigrationTests` | The ownership migrations refuse to run over data that has no owner |
 | `JpaRepositoriesTests` | Persistence adapters round-trip, and writes require the row lock |
-| `TransferServiceTests` | Use cases: stored rejections, replay, key reuse, race replay, lock timeout |
+| `TransferServiceTests` | Use cases: stored rejections, replay, key reuse, race replay, lock timeout, ownership (a stranger is refused without waiting for the owner's lock) |
 | `RegistrationServiceTests` | Concurrent sign-ups with one username create exactly one user |
 | `ConcurrentTransfersTests` | 500 transfers at once: a drained hot account, crossed pairs, a random mesh |
 | `ParallelIdempotencyTests` | One key under contention: identical requests execute once, different ones get `422` |
-| `*ApiTests` | HTTP contract: status codes, problem types, headers, strict JSON |
-| `DemoDataSeederTests` | Demo money is issued only with the `dev` profile, and only once |
+| `*ApiTests` | HTTP contract: status codes, problem types, headers, strict JSON, tokens and roles, other users' resources |
+| `DemoDataSeederTests` | Demo users and money exist only with the `dev` profile and a demo password, and money is issued only once |
 
 CI runs the same `./mvnw verify` on every push and pull request, plus OWASP Dependency-Check and
 CodeQL ([ADR-0003](docs/adr/0003-ci-supply-chain-hardening.md)).
@@ -221,11 +240,12 @@ Each phase has a Definition of Done and starts only after the previous one passe
 
 These are deliberate at this point of Phase 2:
 
-- **No ownership checks yet.** Every call needs an access token, but accounts have no owners, so
-  any logged-in user can read any account and move money out of it. The next Phase 2 step adds
-  owners and an ownership check on every query.
 - **No logout or refresh yet.** An access token lasts 10 minutes and cannot be revoked; after
-  that, log in again. Refresh tokens and logout come later in Phase 2.
+  that, log in again. Refresh tokens and logout are the next Phase 2 step.
+- **No rate limiting or lockout yet.** Nothing slows down password guessing or floods of
+  requests. A later Phase 2 step adds both.
+- **No admin endpoints yet.** Admin tokens are refused on accounts and transfers (`403`); the
+  support view they get instead comes later in Phase 2.
 - **Swagger UI is public**, without a token. A later Phase 2 step limits it to the `dev` profile.
 - **Money enters only through the `dev` seeder.** There is no public deposit endpoint, by design
   ([ADR-0010](docs/adr/0010-internal-accounts-hidden-from-public-use-cases.md)).
@@ -251,5 +271,7 @@ These are deliberate at this point of Phase 2:
 | [0011](docs/adr/0011-http-error-contract.md) | HTTP error contract: RFC 9457 problems, strict JSON, no echoed input |
 | [0012](docs/adr/0012-least-privilege-database-role.md) | Run the application as a least-privilege database role |
 | [0013](docs/adr/0013-password-storage-and-registration.md) | Hash passwords with Argon2id; log in with usernames, not emails |
+| [0014](docs/adr/0014-jwt-access-tokens.md) | Short-lived RS256 JWT access tokens |
+| [0015](docs/adr/0015-resource-ownership.md) | Accounts belong to users; someone else's resources look like missing ones |
 
 New decisions start from the [template](docs/adr/0000-template.md).
