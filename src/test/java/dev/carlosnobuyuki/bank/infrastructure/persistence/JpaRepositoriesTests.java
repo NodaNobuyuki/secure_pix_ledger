@@ -151,7 +151,8 @@ class JpaRepositoriesTests {
     assertThat(stored.amount()).isEqualTo(Money.brl(1_000));
     assertThat(stored.requestHash()).isEqualTo(HASH);
     assertThat(stored.createdAt()).isEqualTo(NOW);
-    assertThat(transfers.findByIdempotencyKey(stored.idempotencyKey()))
+    assertThat(stored.initiatedBy()).isEmpty();
+    assertThat(transfers.findByIdempotencyKey(null, stored.idempotencyKey()))
         .map(Transfer::id)
         .contains(stored.id());
     assertThat(accounts.findById(customer.id()).orElseThrow().balance())
@@ -175,11 +176,28 @@ class JpaRepositoriesTests {
 
     TransferResult result =
         Transfer.execute(
-            UUID.randomUUID(), UUID.randomUUID(), HASH, source, destination, Money.brl(1), NOW);
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            HASH,
+            source.ownerId().orElseThrow(),
+            source,
+            destination,
+            Money.brl(1),
+            NOW);
     transfers.add(result);
     flushAndClear();
 
     Transfer stored = transfers.findById(result.transfer().id()).orElseThrow();
+    assertThat(stored.initiatedBy()).isEqualTo(source.ownerId());
+    assertThat(
+            transfers.findByIdempotencyKey(
+                stored.initiatedBy().orElseThrow(), stored.idempotencyKey()))
+        .map(Transfer::id)
+        .contains(stored.id());
+    // Keys are per initiator: the same key looked up for anyone else finds nothing (ADR-0008).
+    assertThat(transfers.findByIdempotencyKey(UUID.randomUUID(), stored.idempotencyKey()))
+        .isEmpty();
+    assertThat(transfers.findByIdempotencyKey(null, stored.idempotencyKey())).isEmpty();
     assertThat(stored.status()).isEqualTo(TransferStatus.REJECTED);
     assertThat(stored.rejectionReason()).contains(RejectionReason.INSUFFICIENT_FUNDS);
     assertThat(
@@ -225,6 +243,7 @@ class JpaRepositoriesTests {
             UUID.randomUUID(),
             idempotencyKey,
             HASH,
+            null,
             funding,
             customer,
             Money.brl(amountMinor),

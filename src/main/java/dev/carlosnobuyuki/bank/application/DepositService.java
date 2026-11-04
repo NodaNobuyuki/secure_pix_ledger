@@ -1,6 +1,5 @@
 package dev.carlosnobuyuki.bank.application;
 
-import dev.carlosnobuyuki.bank.application.TransferExecutor.AccountScope;
 import dev.carlosnobuyuki.bank.application.port.DuplicateIdempotencyKeyException;
 import dev.carlosnobuyuki.bank.domain.Money;
 import dev.carlosnobuyuki.bank.domain.SystemAccounts;
@@ -23,10 +22,12 @@ public class DepositService {
   public TransferOutcome deposit(UUID idempotencyKey, UUID accountId, Money amount) {
     TransferCommand command =
         new TransferCommand(idempotencyKey, SystemAccounts.FUNDING_ID, accountId, amount);
+    // The only place that acts as Internal: no user initiates a deposit (ADR-0015).
+    Initiator internal = new Initiator.Internal();
     try {
-      return executor.execute(command, AccountScope.ANY);
+      return executor.execute(command, internal);
     } catch (DuplicateIdempotencyKeyException e) {
-      return executor.replay(command);
+      return executor.replay(command, internal);
     }
   }
 }

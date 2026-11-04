@@ -10,15 +10,27 @@ public interface AccountRepository {
 
   void add(Account account);
 
-  /** Plain read, no lock. Never use the result to change a balance. */
+  /**
+   * Plain read, no lock. Never use the result to change a balance, and never call it before {@link
+   * #lockForUpdate} on the same account in one transaction: JPA would hand the locked read the
+   * instance loaded here, with its stale balance, and concurrent transfers would lose updates.
+   */
   Optional<Account> findById(UUID id);
+
+  /**
+   * The account's owner; empty for internal and unknown accounts. Reads one column and loads no
+   * account, so it is safe before {@link #lockForUpdate}. Owners never change (ADR-0015), so the
+   * answer cannot go stale.
+   */
+  Optional<UUID> findOwnerId(UUID accountId);
 
   /** Plain read, no lock: the user's accounts, oldest first. */
   List<Account> findByOwner(UUID ownerId);
 
   /**
    * Locks the given accounts for update in ascending id order (ADR-0007) and returns those that
-   * exist, in that order. Missing ids are simply absent from the result.
+   * exist, in that order. Missing ids are simply absent from the result. Must be the first read of
+   * these accounts in the transaction (see {@link #findById}).
    */
   List<Account> lockForUpdate(UUID first, UUID second);
 

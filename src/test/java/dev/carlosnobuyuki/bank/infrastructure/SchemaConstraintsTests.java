@@ -150,7 +150,73 @@ class SchemaConstraintsTests {
 
     assertThatThrownBy(() -> insertTransfer(key, a, b, 100, "COMPLETED", null))
         .isInstanceOf(DataIntegrityViolationException.class)
-        .hasMessageContaining("transfers_idempotency_key_unique");
+        .hasMessageContaining("transfers_initiator_idempotency_key_unique");
+  }
+
+  @Test
+  void allowsSameKeyForDifferentInitiators() {
+    UUID a = insertAccount("CUSTOMER", 0);
+    UUID b = insertAccount("CUSTOMER", 0);
+    UUID key = UUID.randomUUID();
+    insertTransfer(key, a, b, 100, "COMPLETED", null);
+
+    insertTransfer(key, b, a, 100, "COMPLETED", null);
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT count(*) FROM transfers WHERE idempotency_key = ?", Long.class, key))
+        .isEqualTo(2L);
+  }
+
+  @Test
+  void rejectsDuplicateKeyBetweenInternalTransfers() {
+    // NULLS NOT DISTINCT: without it, two NULL initiators would never count as duplicates.
+    UUID funding = insertAccount("SYSTEM", 0);
+    UUID customer = insertAccount("CUSTOMER", 0);
+    UUID key = UUID.randomUUID();
+    insertTransfer(null, key, funding, customer, 100, "COMPLETED", null);
+
+    assertThatThrownBy(() -> insertTransfer(null, key, funding, customer, 100, "COMPLETED", null))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("transfers_initiator_idempotency_key_unique");
+  }
+
+  @Test
+  void rejectsInitiatorWhoDoesNotOwnTheSource() {
+    UUID a = insertAccount("CUSTOMER", 0);
+    UUID b = insertAccount("CUSTOMER", 0);
+    UUID bsOwner = jdbc.queryForObject("SELECT owner_id FROM accounts WHERE id = ?", UUID.class, b);
+
+    assertThatThrownBy(
+            () ->
+                insertTransfer(
+                    bsOwner, UUID.randomUUID(), a, b, 100, "REJECTED", "INSUFFICIENT_FUNDS"))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("transfers_initiator_owns_source");
+  }
+
+  @Test
+  void rejectsCustomerTransferWithoutInitiator() {
+    UUID a = insertAccount("CUSTOMER", 0);
+    UUID b = insertAccount("CUSTOMER", 0);
+
+    assertThatThrownBy(() -> insertTransfer(null, UUID.randomUUID(), a, b, 100, "COMPLETED", null))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("transfers_initiator_owns_source");
+  }
+
+  @Test
+  void rejectsInitiatorOnInternalTransfer() {
+    UUID funding = insertAccount("SYSTEM", 0);
+    UUID customer = insertAccount("CUSTOMER", 0);
+    UUID someone = insertUser();
+
+    assertThatThrownBy(
+            () ->
+                insertTransfer(
+                    someone, UUID.randomUUID(), funding, customer, 100, "COMPLETED", null))
+        .isInstanceOf(DataIntegrityViolationException.class)
+        .hasMessageContaining("transfers_initiator_owns_source");
   }
 
   @Test
@@ -277,7 +343,22 @@ class SchemaConstraintsTests {
     return id;
   }
 
+  // Initiated by the source's owner, which is what the trigger requires (ADR-0015).
   private UUID insertTransfer(
+      UUID idempotencyKey,
+      UUID source,
+      UUID destination,
+      long amountMinor,
+      String status,
+      String rejectionReason) {
+    UUID owner =
+        jdbc.queryForObject("SELECT owner_id FROM accounts WHERE id = ?", UUID.class, source);
+    return insertTransfer(
+        owner, idempotencyKey, source, destination, amountMinor, status, rejectionReason);
+  }
+
+  private UUID insertTransfer(
+      UUID initiatedBy,
       UUID idempotencyKey,
       UUID source,
       UUID destination,
@@ -286,12 +367,14 @@ class SchemaConstraintsTests {
       String rejectionReason) {
     UUID id = UUID.randomUUID();
     jdbc.update(
-        "INSERT INTO transfers (id, idempotency_key, request_hash, source_account_id,"
-            + " destination_account_id, amount_minor, currency, status, rejection_reason)"
-            + " VALUES (?, ?, ?, ?, ?, ?, 'BRL', ?, ?)",
+        "INSERT INTO transfers (id, idempotency_key, request_hash, initiated_by,"
+            + " source_account_id, destination_account_id, amount_minor, currency, status,"
+            + " rejection_reason)"
+            + " VALUES (?, ?, ?, ?, ?, ?, ?, 'BRL', ?, ?)",
         id,
         idempotencyKey,
         HASH,
+        initiatedBy,
         source,
         destination,
         amountMinor,

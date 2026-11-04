@@ -23,9 +23,70 @@ class TransferTest {
         NOW);
   }
 
+  // Initiated by the source's owner, as every caller must (ADR-0015).
   private static TransferResult execute(Account source, Account destination, Money amount) {
     return Transfer.execute(
-        UUID.randomUUID(), UUID.randomUUID(), HASH, source, destination, amount, NOW);
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        HASH,
+        source.ownerId().orElseThrow(),
+        source,
+        destination,
+        amount,
+        NOW);
+  }
+
+  @Test
+  void recordsTheInitiator() {
+    Account source = account(AccountStatus.ACTIVE, 1000);
+
+    TransferResult result = execute(source, account(AccountStatus.ACTIVE, 0), Money.brl(1));
+
+    assertThat(result.transfer().initiatedBy()).isEqualTo(source.ownerId());
+  }
+
+  @Test
+  void initiatorMustOwnTheSource() {
+    Account source = account(AccountStatus.ACTIVE, 1000);
+    Account destination = account(AccountStatus.ACTIVE, 0);
+
+    for (UUID stranger :
+        new UUID[] {UUID.randomUUID(), destination.ownerId().orElseThrow(), null}) {
+      assertThatThrownBy(
+              () ->
+                  Transfer.execute(
+                      UUID.randomUUID(),
+                      UUID.randomUUID(),
+                      HASH,
+                      stranger,
+                      source,
+                      destination,
+                      Money.brl(1),
+                      NOW))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("does not own");
+    }
+    assertThat(source.balance()).isEqualTo(Money.brl(1000));
+  }
+
+  @Test
+  void internalSourceHasNoInitiator() {
+    Account funding =
+        Account.restore(
+            UUID.randomUUID(), AccountType.SYSTEM, null, AccountStatus.ACTIVE, Money.brl(0), NOW);
+
+    TransferResult result =
+        Transfer.execute(
+            UUID.randomUUID(),
+            UUID.randomUUID(),
+            HASH,
+            null,
+            funding,
+            account(AccountStatus.ACTIVE, 0),
+            Money.brl(1),
+            NOW);
+
+    assertThat(result.transfer().initiatedBy()).isEmpty();
   }
 
   @Test
@@ -131,6 +192,7 @@ class TransferTest {
                     id,
                     UUID.randomUUID(),
                     HASH,
+                    null,
                     UUID.randomUUID(),
                     UUID.randomUUID(),
                     Money.brl(1),
@@ -144,6 +206,7 @@ class TransferTest {
                     id,
                     UUID.randomUUID(),
                     HASH,
+                    null,
                     UUID.randomUUID(),
                     UUID.randomUUID(),
                     Money.brl(1),

@@ -230,6 +230,91 @@ class TransferApiTests {
   }
 
   @Test
+  void someoneElsesSourceLooksExactlyLikeAnUnknownAccount() throws Exception {
+    UUID alices = funded(1_000);
+    LoggedIn bob = auth.newCustomer();
+    UUID bobs = accounts.open(bob.id()).id();
+    UUID unknown = UUID.randomUUID();
+    UUID key = UUID.randomUUID();
+
+    MvcTestResult stolen = post(bob.authorization(), key, body(alices, bobs, 500));
+    MvcTestResult missing = post(bob.authorization(), UUID.randomUUID(), body(unknown, bobs, 500));
+
+    assertThat(stolen).hasStatus(HttpStatus.NOT_FOUND);
+    assertThat(stolen.getResponse().getContentAsString().replace(alices.toString(), "ID"))
+        .isEqualTo(missing.getResponse().getContentAsString().replace(unknown.toString(), "ID"));
+    // Nothing stored, so bob's key is still free for a transfer of his own (ADR-0015).
+    deposits.deposit(UUID.randomUUID(), bobs, Money.brl(100));
+    assertThat(post(bob.authorization(), key, body(bobs, alices, 100)))
+        .hasStatus(HttpStatus.CREATED)
+        .doesNotContainHeader("Idempotent-Replayed");
+    assertThat(mvc.get().uri("/accounts/{id}", alices).header(HttpHeaders.AUTHORIZATION, bearer))
+        .bodyJson()
+        .extractingPath("$.balanceMinor")
+        .isEqualTo(1_100);
+  }
+
+  @Test
+  void onlyThePayerAndPayeeSeeACompletedTransfer() throws Exception {
+    UUID alices = funded(1_000);
+    LoggedIn carol = auth.newCustomer();
+    UUID carols = accounts.open(carol.id()).id();
+    String bob = auth.newCustomer().authorization();
+    String id =
+        post(UUID.randomUUID(), body(alices, carols, 300))
+            .getResponse()
+            .getHeader("Location")
+            .replace("/transfers/", "");
+
+    assertThat(mvc.get().uri("/transfers/{id}", id).header(HttpHeaders.AUTHORIZATION, bearer))
+        .hasStatusOk();
+    assertThat(
+            mvc.get()
+                .uri("/transfers/{id}", id)
+                .header(HttpHeaders.AUTHORIZATION, carol.authorization()))
+        .hasStatusOk()
+        .bodyJson()
+        .extractingPath("$.amountMinor")
+        .isEqualTo(300);
+    String hidden =
+        mvc.get()
+            .uri("/transfers/{id}", id)
+            .header(HttpHeaders.AUTHORIZATION, bob)
+            .exchange()
+            .getResponse()
+            .getContentAsString();
+    UUID unknownId = UUID.randomUUID();
+    String unknown =
+        mvc.get()
+            .uri("/transfers/{id}", unknownId)
+            .header(HttpHeaders.AUTHORIZATION, bob)
+            .exchange()
+            .getResponse()
+            .getContentAsString();
+    assertThat(hidden.replace(id, "ID")).isEqualTo(unknown.replace(unknownId.toString(), "ID"));
+  }
+
+  @Test
+  void payeeDoesNotSeeARejection() throws Exception {
+    UUID alices = accounts.open(owner).id();
+    LoggedIn carol = auth.newCustomer();
+    UUID carols = accounts.open(carol.id()).id();
+    MvcTestResult rejected = post(UUID.randomUUID(), body(alices, carols, 1));
+    String id =
+        (String)
+            com.jayway.jsonpath.JsonPath.read(
+                rejected.getResponse().getContentAsString(), "$.transferId");
+
+    assertThat(mvc.get().uri("/transfers/{id}", id).header(HttpHeaders.AUTHORIZATION, bearer))
+        .hasStatusOk();
+    assertThat(
+            mvc.get()
+                .uri("/transfers/{id}", id)
+                .header(HttpHeaders.AUTHORIZATION, carol.authorization()))
+        .hasStatus(HttpStatus.NOT_FOUND);
+  }
+
+  @Test
   void unknownTransferIs404() {
     assertThat(
             mvc.get()
@@ -259,9 +344,13 @@ class TransferApiTests {
   }
 
   private MvcTestResult post(UUID idempotencyKey, String json) {
+    return post(bearer, idempotencyKey, json);
+  }
+
+  private MvcTestResult post(String authorization, UUID idempotencyKey, String json) {
     return mvc.post()
         .uri("/transfers")
-        .header(HttpHeaders.AUTHORIZATION, bearer)
+        .header(HttpHeaders.AUTHORIZATION, authorization)
         .header("Idempotency-Key", idempotencyKey.toString())
         .contentType(MediaType.APPLICATION_JSON)
         .content(json)

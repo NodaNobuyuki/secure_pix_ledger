@@ -54,6 +54,8 @@ class LeastPrivilegeTests {
         "ALTER TABLE ledger_entries DISABLE TRIGGER ALL",
         "DROP TRIGGER ledger_entries_no_update_or_delete ON ledger_entries",
         "UPDATE transfers SET status = 'COMPLETED'",
+        "UPDATE transfers SET initiated_by = NULL",
+        "DROP TRIGGER transfers_initiator_owns_source ON transfers",
         "DELETE FROM transfers",
         "UPDATE accounts SET type = 'SYSTEM'",
         "UPDATE accounts SET owner_id = NULL",

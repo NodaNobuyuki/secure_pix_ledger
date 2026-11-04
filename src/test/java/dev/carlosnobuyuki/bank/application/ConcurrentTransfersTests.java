@@ -126,7 +126,7 @@ class ConcurrentTransfersTests {
             pool.submit(
                 () -> {
                   start.await();
-                  return transfers.transfer(command);
+                  return transfers.transfer(owner, command);
                 }));
       }
       start.countDown();

@@ -13,8 +13,8 @@ import org.springframework.stereotype.Repository;
 @Repository
 class JpaTransferRepository implements TransferRepository {
 
-  // Must match the constraint name in V1__initial_schema.sql (ADR-0009).
-  static final String IDEMPOTENCY_KEY_CONSTRAINT = "transfers_idempotency_key_unique";
+  // Must match the constraint name in V5__transfer_initiators.sql (ADR-0009).
+  static final String IDEMPOTENCY_KEY_CONSTRAINT = "transfers_initiator_idempotency_key_unique";
 
   private final TransferJpaRepository transfers;
   private final EntityManager entityManager;
@@ -48,7 +48,11 @@ class JpaTransferRepository implements TransferRepository {
   }
 
   @Override
-  public Optional<Transfer> findByIdempotencyKey(UUID idempotencyKey) {
-    return transfers.findByIdempotencyKey(idempotencyKey).map(TransferEntity::toDomain);
+  public Optional<Transfer> findByIdempotencyKey(UUID initiatedBy, UUID idempotencyKey) {
+    var found =
+        initiatedBy == null
+            ? transfers.findByInitiatedByIsNullAndIdempotencyKey(idempotencyKey)
+            : transfers.findByInitiatedByAndIdempotencyKey(initiatedBy, idempotencyKey);
+    return found.map(TransferEntity::toDomain);
   }
 }

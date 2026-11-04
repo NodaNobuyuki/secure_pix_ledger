@@ -19,5 +19,11 @@ public interface TransferRepository {
 
   Optional<Transfer> findById(UUID id);
 
-  Optional<Transfer> findByIdempotencyKey(UUID idempotencyKey);
+  /**
+   * The transfer the initiator stored under this key. Keys are scoped per initiator (ADR-0008), so
+   * another user's transfer with the same key is never returned.
+   *
+   * @param initiatedBy the initiating user, or {@code null} for internal transfers
+   */
+  Optional<Transfer> findByIdempotencyKey(UUID initiatedBy, UUID idempotencyKey);
 }

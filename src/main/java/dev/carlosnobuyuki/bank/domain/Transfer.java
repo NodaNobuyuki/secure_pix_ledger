@@ -12,6 +12,7 @@ public final class Transfer {
   private final UUID id;
   private final UUID idempotencyKey;
   private final String requestHash;
+  private final UUID initiatedBy;
   private final UUID sourceAccountId;
   private final UUID destinationAccountId;
   private final Money amount;
@@ -23,6 +24,7 @@ public final class Transfer {
       UUID id,
       UUID idempotencyKey,
       String requestHash,
+      UUID initiatedBy,
       UUID sourceAccountId,
       UUID destinationAccountId,
       Money amount,
@@ -32,6 +34,7 @@ public final class Transfer {
     this.id = Objects.requireNonNull(id, "id");
     this.idempotencyKey = Objects.requireNonNull(idempotencyKey, "idempotencyKey");
     this.requestHash = Objects.requireNonNull(requestHash, "requestHash");
+    this.initiatedBy = initiatedBy;
     this.sourceAccountId = Objects.requireNonNull(sourceAccountId, "sourceAccountId");
     this.destinationAccountId =
         Objects.requireNonNull(destinationAccountId, "destinationAccountId");
@@ -50,11 +53,15 @@ public final class Transfer {
    * <p>Invalid requests throw {@link InvalidTransferException}. Business-rule failures return a
    * REJECTED transfer and leave both balances untouched. Success debits, credits and returns the
    * two entries, which always sum to zero.
+   *
+   * @param initiatedBy the user moving the money, who must own the source; {@code null} for
+   *     internal transfers, whose source belongs to no one (ADR-0015)
    */
   public static TransferResult execute(
       UUID id,
       UUID idempotencyKey,
       String requestHash,
+      UUID initiatedBy,
       Account source,
       Account destination,
       Money amount,
@@ -62,6 +69,12 @@ public final class Transfer {
     Objects.requireNonNull(source, "source");
     Objects.requireNonNull(destination, "destination");
     Objects.requireNonNull(amount, "amount");
+    // Callers check ownership first and answer "not found" (ADR-0015); reaching this is a bug, so
+    // it is not a business outcome. Same rule as the transfers_initiator_owns_source trigger.
+    if (!Objects.equals(initiatedBy, source.ownerId().orElse(null))) {
+      throw new IllegalArgumentException(
+          "the initiator does not own source account " + source.id());
+    }
     if (!amount.isPositive()) {
       throw new InvalidTransferException("amount must be positive");
     }
@@ -80,6 +93,7 @@ public final class Transfer {
               id,
               idempotencyKey,
               requestHash,
+              initiatedBy,
               source.id(),
               destination.id(),
               amount,
@@ -96,6 +110,7 @@ public final class Transfer {
             id,
             idempotencyKey,
             requestHash,
+            initiatedBy,
             source.id(),
             destination.id(),
             amount,
@@ -109,11 +124,16 @@ public final class Transfer {
             new LedgerEntry(id, destination.id(), amount)));
   }
 
-  /** Rebuilds a transfer from storage, e.g. to replay it for an idempotent retry. */
+  /**
+   * Rebuilds a transfer from storage, e.g. to replay it for an idempotent retry.
+   *
+   * @param initiatedBy {@code null} for internal transfers
+   */
   public static Transfer restore(
       UUID id,
       UUID idempotencyKey,
       String requestHash,
+      UUID initiatedBy,
       UUID sourceAccountId,
       UUID destinationAccountId,
       Money amount,
@@ -124,6 +144,7 @@ public final class Transfer {
         id,
         idempotencyKey,
         requestHash,
+        initiatedBy,
         sourceAccountId,
         destinationAccountId,
         amount,
@@ -156,6 +177,11 @@ public final class Transfer {
 
   public String requestHash() {
     return requestHash;
+  }
+
+  /** The user who moved the money; empty for internal transfers such as deposits. */
+  public Optional<UUID> initiatedBy() {
+    return Optional.ofNullable(initiatedBy);
   }
 
   public UUID sourceAccountId() {

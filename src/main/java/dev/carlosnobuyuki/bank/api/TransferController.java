@@ -10,6 +10,8 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -38,9 +40,11 @@ class TransferController {
    */
   @PostMapping
   ResponseEntity<Object> create(
+      @AuthenticationPrincipal Jwt caller,
       @RequestHeader(IDEMPOTENCY_KEY) UUID idempotencyKey,
       @Valid @RequestBody TransferRequest request) {
-    TransferOutcome outcome = transfers.transfer(request.toCommand(idempotencyKey));
+    TransferOutcome outcome =
+        transfers.transfer(Callers.id(caller), request.toCommand(idempotencyKey));
     Transfer transfer = outcome.transfer();
 
     ResponseEntity.BodyBuilder response;
@@ -58,10 +62,11 @@ class TransferController {
     return response.body(body);
   }
 
+  /** A transfer the caller may not see gets the same 404 as an unknown id (ADR-0015). */
   @GetMapping("/{id}")
-  TransferResponse get(@PathVariable UUID id) {
+  TransferResponse get(@AuthenticationPrincipal Jwt caller, @PathVariable UUID id) {
     return transfers
-        .find(id)
+        .find(id, Callers.id(caller))
         .map(TransferResponse::from)
         .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
   }

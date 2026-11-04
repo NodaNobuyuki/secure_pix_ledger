@@ -21,14 +21,15 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
- * V4 must refuse a database that already holds customer accounts, which have no one to belong to,
- * instead of inventing an owner (ADR-0015). Local volumes created before V4 are in that state.
+ * V4 and V5 must refuse databases holding customer accounts or transfers from before ownership
+ * existed, instead of inventing an owner or an initiator (ADR-0015). Local volumes created before
+ * those migrations are in that state.
  *
  * <p>Runs on a scratch database in the shared container, so the application's database is
  * untouched.
  */
 @IntegrationTest
-class AccountOwnersMigrationTests {
+class OwnershipMigrationTests {
 
   @Autowired PostgreSQLContainer postgres;
 
@@ -56,6 +57,42 @@ class AccountOwnersMigrationTests {
     assertThatThrownBy(() -> flyway("4").migrate())
         .isInstanceOf(FlywayException.class)
         .hasMessageContaining("reset the development database");
+  }
+
+  @Test
+  void refusesCustomerTransfersCreatedBeforeInitiators() {
+    flyway("4").migrate();
+    JdbcTemplate jdbc = scratch();
+    UUID owner = UUID.randomUUID();
+    jdbc.update(
+        "INSERT INTO users (id, username, password_hash, role)"
+            + " VALUES (?, 'migration-owner', '{argon2}x', 'CUSTOMER')",
+        owner);
+    UUID a = insertCustomerAccount(jdbc, owner);
+    UUID b = insertCustomerAccount(jdbc, owner);
+    jdbc.update(
+        "INSERT INTO transfers (id, idempotency_key, request_hash, source_account_id,"
+            + " destination_account_id, amount_minor, currency, status, rejection_reason)"
+            + " VALUES (?, ?, ?, ?, ?, 1, 'BRL', 'REJECTED', 'INSUFFICIENT_FUNDS')",
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        "c".repeat(64),
+        a,
+        b);
+
+    assertThatThrownBy(() -> flyway("5").migrate())
+        .isInstanceOf(FlywayException.class)
+        .hasMessageContaining("reset the development database");
+  }
+
+  private static UUID insertCustomerAccount(JdbcTemplate jdbc, UUID owner) {
+    UUID id = UUID.randomUUID();
+    jdbc.update(
+        "INSERT INTO accounts (id, type, status, currency, balance_minor, owner_id)"
+            + " VALUES (?, 'CUSTOMER', 'ACTIVE', 'BRL', 0, ?)",
+        id,
+        owner);
+    return id;
   }
 
   private Flyway flyway(String target) {

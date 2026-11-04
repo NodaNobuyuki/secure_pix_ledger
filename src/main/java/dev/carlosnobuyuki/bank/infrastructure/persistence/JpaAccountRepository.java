@@ -33,6 +33,11 @@ class JpaAccountRepository implements AccountRepository {
   }
 
   @Override
+  public Optional<UUID> findOwnerId(UUID accountId) {
+    return accounts.findOwnerIdById(accountId);
+  }
+
+  @Override
   public List<Account> findByOwner(UUID ownerId) {
     return accounts.findByOwnerIdOrderByCreatedAtAscIdAsc(ownerId).stream()
         .map(AccountEntity::toDomain)

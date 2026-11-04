@@ -33,6 +33,10 @@ class TransferEntity {
   @Column(name = "request_hash", nullable = false, length = 64)
   private String requestHash;
 
+  // NULL for internal transfers. Never updated: the application role has no UPDATE on transfers.
+  @Column(name = "initiated_by", updatable = false)
+  private UUID initiatedBy;
+
   // Plain ids rather than @ManyToOne: the domain refers to accounts by id, and this avoids
   // lazy-loading accounts by accident (and without a lock).
   @Column(name = "source_account_id", nullable = false)
@@ -68,6 +72,7 @@ class TransferEntity {
     entity.id = transfer.id();
     entity.idempotencyKey = transfer.idempotencyKey();
     entity.requestHash = transfer.requestHash();
+    entity.initiatedBy = transfer.initiatedBy().orElse(null);
     entity.sourceAccountId = transfer.sourceAccountId();
     entity.destinationAccountId = transfer.destinationAccountId();
     entity.amountMinor = transfer.amount().amountMinor();
@@ -83,6 +88,7 @@ class TransferEntity {
         id,
         idempotencyKey,
         requestHash,
+        initiatedBy,
         sourceAccountId,
         destinationAccountId,
         new Money(amountMinor, Currency.getInstance(currency)),
